@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- صفحة قصة مصورة بيضاء بزاوية مطوية، ضمن المنطقة الآمنة لأيقونة adaptive -->
+    <path android:fillColor="#F5F7F6" android:pathData="M33,26 L68,26 L75,33 L75,82 L33,82 Z" />
+    <path android:fillColor="#D8DED9" android:pathData="M68,26 L68,33 L75,33 Z" />
+
+    <!-- إطارا لوحة داخل الصفحة (يرمز لطابع القصص المصورة) -->
+    <path android:fillColor="#B9C4BC" android:pathData="M39,40 L69,40 L69,42 L39,42 Z" />
+    <path android:fillColor="#B9C4BC" android:pathData="M39,58 L69,58 L69,60 L39,60 Z" />
+
+    <!-- كائن السلايم الأخضر يطل من أعلى الصفحة -->
+    <path
+        android:fillColor="#34D399"
+        android:pathData="M54,18 C64,18 71,26 71,35 C71,44.5 63,50 54,50 C45,50 37,44.5 37,35 C37,26 44,18 54,18 Z" />
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M37,35 C37,44.5 45,50 54,50 C63,50 71,44.5 71,35 C71,38 68,46 54,46 C40,46 37,38 37,35 Z" />
+
+    <!-- عينان بسيطتان مبتسمتان -->
+    <path android:fillColor="#0B0F12" android:pathData="M47,32 m-2.6,0 a2.6,2.6 0,1,0 5.2,0 a2.6,2.6 0,1,0 -5.2,0" />
+    <path android:fillColor="#0B0F12" android:pathData="M61,32 m-2.6,0 a2.6,2.6 0,1,0 5.2,0 a2.6,2.6 0,1,0 -5.2,0" />
+
+</vector>
