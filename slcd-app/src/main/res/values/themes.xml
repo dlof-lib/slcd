@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- السمة الأساسية: خلفية غامقة متّسقة مع تجربة قراءة القصص المصورة الغامرة -->
+    <style name="Theme.Slcd" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/slcd_ink</item>
+        <item name="android:statusBarColor">@color/slcd_ink</item>
+        <item name="android:navigationBarColor">@color/slcd_ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- سمة splash بسيطة أثناء إقلاع Activity، قبل أن يتولّى Compose الرسم -->
+    <style name="Theme.Slcd.Splash" parent="Theme.Slcd">
+        <item name="android:windowBackground">@color/slcd_ink</item>
+    </style>
+
+</resources>
