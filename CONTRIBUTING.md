@@ -27,7 +27,7 @@
 ### الاستنساخ والبناء
 
 ```bash
-git clone https://github.com/<org>/slcd.git
+git clone https://github.com/dlof-lib/slcd.git
 cd slcd
 gradle :slcd-app:assembleDebug --stacktrace
 ```
