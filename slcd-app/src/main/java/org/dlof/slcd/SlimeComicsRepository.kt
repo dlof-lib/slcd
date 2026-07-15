@@ -580,40 +580,77 @@ class SlimeComicsRepository(private val context: Context) {
             ?.uri
     }
 
-    fun listSeasons(root: DocumentFile): List<SlcdSeason> {
+    /** يعثر على مجلد seasons/seasonN دون قراءة فصوله — لبنة أساسية للتحميل الهيكلي. */
+    private fun findSeasonFolder(root: DocumentFile, seasonNumber: Int): DocumentFile? =
+        root.findFile(DIR_SEASONS)?.findFile("season$seasonNumber")
+
+    /**
+     * ── تحميل هيكلي لفصول موسم واحد ─────────────────────────────────
+     *
+     * يقرأ مجلد `seasons/seasonN/chapters/` لموسم واحد فقط (بدون لمس أي
+     * موسم آخر) ويبني قائمة [SlcdChapter] الكاملة له (عدد الصفحات، حالة
+     * التعبئة، العنوان، المفضّلة/المقروء). هذه هي وحدة العمل الأساسية التي
+     * تُبنى عليها كل من [listSeasons] (تحميل كل المواسم دفعة واحدة) و
+     * [loadChaptersForSeason] العامة (تحميل موسم واحد عند الطلب فقط، مثلاً
+     * عند فتحه في الواجهة)، فلا يُعاد كتابة المنطق مرتين.
+     */
+    private fun readChaptersOf(seasonNumber: Int, seasonDir: DocumentFile): List<SlcdChapter> {
+        val chaptersDir = seasonDir.findFile(DIR_CHAPTERS) ?: return emptyList()
+        return chaptersDir.listFiles()
+            .filter { it.isDirectory && it.name?.startsWith("chapter") == true }
+            .mapNotNull { chapterDir ->
+                val chapterNumber = chapterDir.name?.removePrefix("chapter")?.toIntOrNull()
+                    ?: return@mapNotNull null
+                val pages = chapterDir.listFiles().count { it.name?.endsWith(".dlofcomic") == true }
+                val packaged = chapterDir.listFiles().any {
+                    it.name?.endsWith(".slcdpkg") == true || it.name?.endsWith(".dlofpkg") == true
+                }
+                SlcdChapter(
+                    seasonNumber = seasonNumber,
+                    chapterNumber = chapterNumber,
+                    folder = chapterDir,
+                    pageCount = pages,
+                    alreadyPackaged = packaged,
+                    title = readTitle(chapterDir),
+                    isFavorite = hasFlag(chapterDir, FAVORITE_FILE),
+                    isRead = hasFlag(chapterDir, READ_FILE)
+                )
+            }
+            .sortedBy { it.chapterNumber }
+    }
+
+    /**
+     * تحميل هيكلي **لموسم واحد فقط** بحسب رقمه — يُستدعى عند الطلب (مثلاً
+     * عند فتح بطاقة الموسم في الواجهة، أو تمهيداً لقراءة أحد فصوله)، دون
+     * الحاجة لعبور بقية مواسم المكتبة. يعيد `null` إن لم يوجد الموسم.
+     */
+    fun loadChaptersForSeason(root: DocumentFile, seasonNumber: Int): List<SlcdChapter> {
+        val seasonDir = findSeasonFolder(root, seasonNumber) ?: return emptyList()
+        return readChaptersOf(seasonNumber, seasonDir)
+    }
+
+    /**
+     * ── قائمة مواسم "سطحية" (Shallow) ────────────────────────────────
+     *
+     * تقرأ فقط مجلدات `seasons/seasonN/` نفسها (الرقم والعنوان والوصف
+     * والتصنيف) دون النزول إلى `chapters/` إطلاقاً — كل موسم يعود بقائمة
+     * فصول فارغة. هذه عملية رخيصة جداً (لا تفتح أي مجلد فصل ولا تعدّ أي
+     * صفحة `.dlofcomic`) تُستخدم لرسم شاشة المكتبة الرئيسية فوراً، ثم
+     * تُستكمل فصول كل موسم لاحقاً وعلى حدة عبر [loadChaptersForSeason]
+     * عند الحاجة الفعلية (موسم مفتوح، أو استكمال قراءة محفوظ). راجع
+     * [loadLibraryShallow].
+     */
+    fun listSeasonsShallow(root: DocumentFile): List<SlcdSeason> {
         val seasonsDir = root.findFile(DIR_SEASONS) ?: return emptyList()
         return seasonsDir.listFiles()
             .filter { it.isDirectory && it.name?.startsWith("season") == true }
             .mapNotNull { seasonDir ->
                 val seasonNumber = seasonDir.name?.removePrefix("season")?.toIntOrNull()
                     ?: return@mapNotNull null
-                val chaptersDir = seasonDir.findFile(DIR_CHAPTERS)
-                val chapters = chaptersDir?.listFiles()
-                    ?.filter { it.isDirectory && it.name?.startsWith("chapter") == true }
-                    ?.mapNotNull { chapterDir ->
-                        val chapterNumber = chapterDir.name?.removePrefix("chapter")?.toIntOrNull()
-                            ?: return@mapNotNull null
-                        val pages = chapterDir.listFiles().count { it.name?.endsWith(".dlofcomic") == true }
-                        val packaged = chapterDir.listFiles().any {
-                            it.name?.endsWith(".slcdpkg") == true || it.name?.endsWith(".dlofpkg") == true
-                        }
-                        SlcdChapter(
-                            seasonNumber = seasonNumber,
-                            chapterNumber = chapterNumber,
-                            folder = chapterDir,
-                            pageCount = pages,
-                            alreadyPackaged = packaged,
-                            title = readTitle(chapterDir),
-                            isFavorite = hasFlag(chapterDir, FAVORITE_FILE),
-                            isRead = hasFlag(chapterDir, READ_FILE)
-                        )
-                    }
-                    ?.sortedBy { it.chapterNumber }
-                    ?: emptyList()
                 SlcdSeason(
                     number = seasonNumber,
                     folder = seasonDir,
-                    chapters = chapters,
+                    chapters = emptyList(),
                     title = readTitle(seasonDir),
                     description = readDescription(seasonDir),
                     genre = readGenre(seasonDir)
@@ -622,12 +659,37 @@ class SlimeComicsRepository(private val context: Context) {
             .sortedBy { it.number }
     }
 
+    /** تحميل كامل (هيكلي بالكامل) لكل المواسم وفصولها معاً — يُستخدم حين تُحتاج المكتبة كاملة دفعة واحدة. */
+    fun listSeasons(root: DocumentFile): List<SlcdSeason> =
+        listSeasonsShallow(root).map { season ->
+            season.copy(chapters = readChaptersOf(season.number, season.folder))
+        }
+
+    /** تحميل كامل للمكتبة (مواسم + فصولها) — أثقل، يمر على كل مجلدات الفصول فوراً. */
     fun loadLibrary(rootTreeUri: Uri): SlcdLibrary? {
         val root = openRoot(rootTreeUri) ?: return null
         return SlcdLibrary(
             root = root,
             covers = listCovers(root),
             seasons = listSeasons(root),
+            description = libraryDescription(root),
+            genre = libraryGenre(root)
+        )
+    }
+
+    /**
+     * تحميل **هيكلي مرحلي** خفيف للمكتبة: الأغلفة + قائمة مواسم سطحية
+     * (بلا فصول) فقط. يُفترض استخدامها للرسم الأول الفوري لشاشة المكتبة،
+     * ثم استدعاء [loadChaptersForSeason] لكل موسم عند فتحه فعلياً، بدل
+     * انتظار [loadLibrary] الذي يعبر كل الفصول في كل المواسم دفعة واحدة
+     * قبل عرض أي شيء — فرق حاسم في المكتبات الكبيرة (عشرات الفصول).
+     */
+    fun loadLibraryShallow(rootTreeUri: Uri): SlcdLibrary? {
+        val root = openRoot(rootTreeUri) ?: return null
+        return SlcdLibrary(
+            root = root,
+            covers = listCovers(root),
+            seasons = listSeasonsShallow(root),
             description = libraryDescription(root),
             genre = libraryGenre(root)
         )
