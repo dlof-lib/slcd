@@ -56,6 +56,8 @@ private sealed class SlcdRoute {
     data class ChapterDetail(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
     /** شاشة القراءة الجديدة المخصّصة (تمرير رأسي + شريط تقدّم قابل للسحب) — تحلّ محل onOpenDlof لصفحات SLCD. */
     data class Reader(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
+    /** شاشة فريق العمل والنشر — معلومات اعتماد اختيارية على مستوى المكتبة كاملة. */
+    data object Credits : SlcdRoute()
 }
 
 /**
@@ -180,7 +182,13 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
             onUninstall = {
                 SlcdSettings.uninstallSlcd(context)
                 onBack()
-            }
+            },
+            onOpenCredits = { route = SlcdRoute.Credits }
+        )
+
+        is SlcdRoute.Credits -> SlcdCreditsScreen(
+            root = lib.root,
+            onBack = { route = SlcdRoute.Library }
         )
 
         is SlcdRoute.SeasonDetail -> {
@@ -433,7 +441,8 @@ private fun SlcdLibraryScreen(
     onRenameSeason: (Int, String) -> Unit,
     onDeleteSeason: (Int) -> Unit,
     onReorderSeasons: (List<Int>) -> Unit,
-    onUninstall: () -> Unit
+    onUninstall: () -> Unit,
+    onOpenCredits: () -> Unit
 ) {
     var showAddSeasonDialog by remember { mutableStateOf(false) }
     var pendingCoverNumber by remember { mutableStateOf<Int?>(null) }
@@ -472,9 +481,13 @@ private fun SlcdLibraryScreen(
                 },
                 actions = {
                     IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "إلغاء تثبيت SLCD")
+                        Icon(Icons.Filled.MoreVert, contentDescription = "خيارات")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("فريق العمل والنشر") },
+                            onClick = { showMenu = false; onOpenCredits() }
+                        )
                         DropdownMenuItem(
                             text = { Text("إلغاء تثبيت SLCD") },
                             onClick = { showMenu = false; onUninstall() }
