@@ -43,6 +43,12 @@ class DlofRepository(private val context: Context) {
     private val maxInlineSizeBytes = 15L * 1024 * 1024
 
     /**
+     * القياس الثابت (بالبكسل) لكل لوحة SLCD مربعة الشكل يُنشئها المستخدم من
+     * صورة يختارها: عرض وارتفاع ~470×470 تقريباً. انظر [createSquarePanelAttachment].
+     */
+    private val slcdComicPanelSize = 470
+
+    /**
      * يحوّل ملفاً اختاره المستخدم (صورة، فيديو، أو أي نوع آخر) إلى [Attachment]
      * مضمَّن بصيغة base64 داخل ملف الـ DLoF، حفاظاً على فلسفة "الملف المستقل بذاته".
      */
@@ -71,6 +77,86 @@ class DlofRepository(private val context: Context) {
     /** يفكّ ترميز بيانات مرفق base64 إلى bytes خام (لعرض الصور أو حفظ الملفات مؤقتاً). */
     fun decodeAttachmentBytes(attachment: Attachment): ByteArray? =
         attachment.data?.let { Base64.decode(it, Base64.NO_WRAP) }
+
+    /**
+     * ── لوحة SLCD مربعة الشكل بقياس ثابت ────────────────────────────
+     *
+     * يهيّئ صورة اختارها المستخدم لتصبح لوحة SLCD مربعة بالضبط: عرض
+     * وارتفاع [slcdComicPanelSize] بكسل تقريباً (470×470 افتراضياً)، بدل
+     * تضمين الصورة الأصلية بأبعادها ونسبتها كما هي (كما تفعل
+     * [createAttachmentFromUri] العامة). الخطوات:
+     *
+     *  1. فكّ الأبعاد فقط أولاً (`inJustDecodeBounds`) لحساب `inSampleSize`
+     *     مناسب، فلا تُفكّ صورة ضخمة بحجمها الكامل في الذاكرة بلا داعٍ.
+     *  2. اقتصاص مركزي مربّع (Center-Crop) بحسب أصغر بُعد في الصورة، لضمان
+     *     مربّع تام دون تشويه أو تمديد أي محور.
+     *  3. تصغير المربّع الناتج للقياس النهائي الثابت.
+     *  4. ضغط JPEG (أو PNG إن كانت الصورة الأصلية PNG، للحفاظ على الشفافية)
+     *     وتضمينه base64 كأي مرفق آخر.
+     *
+     * تُستخدم حصرياً من [createComicFromImages] عند إنشاء/إضافة لوحات فصل
+     * SLCD — لا تمسّ أي مسار آخر لإنشاء مستندات DLoF عامة.
+     */
+    private fun createSquarePanelAttachment(uri: Uri, targetSize: Int = slcdComicPanelSize): Attachment {
+        val resolver: ContentResolver = context.contentResolver
+        val mimeType = resolver.getType(uri) ?: "image/jpeg"
+        val (fileName, _) = queryNameAndSize(uri)
+        val originalBytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalStateException("تعذّر قراءة الصورة المحددة")
+
+        // مرحلة أ: أبعاد فقط، لحساب inSampleSize مناسب قبل الفكّ الكامل.
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, bounds)
+        val minOriginalDim = minOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+        var sampleSize = 1
+        while (minOriginalDim / (sampleSize * 2) >= targetSize) sampleSize *= 2
+
+        val decoded = android.graphics.BitmapFactory.decodeByteArray(
+            originalBytes, 0, originalBytes.size,
+            android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        ) ?: throw IllegalStateException("تعذّر فكّ الصورة المحددة")
+
+        // اقتصاص مركزي مربّع بحسب أصغر بُعد — لا تشويه لأي محور.
+        val cropSize = minOf(decoded.width, decoded.height)
+        val cropX = (decoded.width - cropSize) / 2
+        val cropY = (decoded.height - cropSize) / 2
+        val squared = if (cropSize == decoded.width && cropSize == decoded.height) {
+            decoded
+        } else {
+            android.graphics.Bitmap.createBitmap(decoded, cropX, cropY, cropSize, cropSize).also {
+                decoded.recycle()
+            }
+        }
+
+        // تصغير للقياس النهائي الثابت لكل لوحات SLCD.
+        val scaled = if (squared.width == targetSize) {
+            squared
+        } else {
+            android.graphics.Bitmap.createScaledBitmap(squared, targetSize, targetSize, true).also {
+                if (it !== squared) squared.recycle()
+            }
+        }
+
+        val outputIsPng = mimeType.contains("png")
+        val out = java.io.ByteArrayOutputStream()
+        if (outputIsPng) {
+            scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+        } else {
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+        }
+        scaled.recycle()
+
+        val outputMime = if (outputIsPng) "image/png" else "image/jpeg"
+        val base64Data = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        return Attachment(
+            id = "att-${UUID.randomUUID().toString().take(8)}",
+            fileName = fileName,
+            mimeType = outputMime,
+            kind = AttachmentKind.fromMimeType(outputMime),
+            data = base64Data,
+            sizeBytes = out.size().toLong()
+        )
+    }
 
     /**
      * يستخرج صورة مصغرة (إطار) من فيديو عبر [Uri] ويعيدها كنص base64 مصغّر.
@@ -506,7 +592,7 @@ class DlofRepository(private val context: Context) {
 
         val createdUris = mutableListOf<Uri>()
         imageUris.forEachIndexed { index, imgUri ->
-            val attachment = createAttachmentFromUri(imgUri)
+            val attachment = createSquarePanelAttachment(imgUri)
             val caption = captions.getOrNull(index).orEmpty()
             val doc = DlofDocument(
                 id = "$baseId-${index + 1}",
