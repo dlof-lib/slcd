@@ -23,8 +23,22 @@ object SlcdSettings {
     private const val KEY_LAST_SEASON = "slcd_last_season"
     private const val KEY_LAST_CHAPTER = "slcd_last_chapter"
     private const val KEY_THEME_MODE = "slcd_theme_mode"
+    private const val KEY_READING_STYLE = "slcd_reading_style"
 
     enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+    /**
+     * ── أسلوب القراءة ────────────────────────────────────────────────
+     *
+     * [WEBTOON] الأسلوب الكلاسيكي: تمرير رأسي متواصل بلا فواصل صفحات
+     * (انظر [org.dlof.slcd.SlcdComicReaderScreen]).
+     *
+     * [PLUS] أسلوب **SLCD+** الجديد: قراءة بالتقليب، لوحة واحدة تملأ
+     * الشاشة في كل مرة، مع حركة تركيز/تكبير دخول لكل لوحة وشريط مصغّرات
+     * أسفل الشاشة (انظر [org.dlof.slcd.SlcdPlusReaderScreen]). يُحفظ
+     * اختيار المستخدم لهذا الأسلوب ويُطبَّق تلقائياً في المرة القادمة.
+     */
+    enum class ReadingStyle { WEBTOON, PLUS }
 
     /** هل اختار المستخدم مجلد مكتبة القصص المصورة بالفعل عبر SAF؟ */
     var slcdInstalled by mutableStateOf(false)
@@ -43,6 +57,10 @@ object SlcdSettings {
     var themeMode by mutableStateOf(ThemeMode.SYSTEM)
         private set
 
+    /** أسلوب القراءة الحالي — افتراضياً [ReadingStyle.WEBTOON] حفاظاً على السلوك القديم. */
+    var readingStyle by mutableStateOf(ReadingStyle.WEBTOON)
+        private set
+
     private var initialized = false
 
     /** يُستدعى مرة واحدة عند إقلاع التطبيق (انظر SlcdApplication.onCreate). */
@@ -57,6 +75,9 @@ object SlcdSettings {
         themeMode = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
         }.getOrDefault(ThemeMode.SYSTEM)
+        readingStyle = runCatching {
+            ReadingStyle.valueOf(prefs.getString(KEY_READING_STYLE, ReadingStyle.WEBTOON.name) ?: ReadingStyle.WEBTOON.name)
+        }.getOrDefault(ReadingStyle.WEBTOON)
     }
 
     /** يُستدعى بعد أن يختار المستخدم مجلد مكتبة SLCD ويمنحه صلاحية دائمة. */
@@ -96,6 +117,12 @@ object SlcdSettings {
     fun setThemeMode(context: Context, mode: ThemeMode) {
         themeMode = mode
         prefs(context).edit().putString(KEY_THEME_MODE, mode.name).apply()
+    }
+
+    /** يبدّل أسلوب القراءة ويحفظه — يُستدعى من زر التبديل داخل شاشة القراءة نفسها. */
+    fun setReadingStyle(context: Context, style: ReadingStyle) {
+        readingStyle = style
+        prefs(context).edit().putString(KEY_READING_STYLE, style.name).apply()
     }
 
     private fun prefs(context: Context) =
