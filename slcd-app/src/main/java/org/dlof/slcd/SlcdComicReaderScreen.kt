@@ -105,6 +105,8 @@ fun SlcdComicReaderScreen(
     onBack: () -> Unit,
     onNextChapter: () -> Unit = {},
     onPreviousChapter: () -> Unit = {},
+    /** إن كانت غير null، يظهر زر صغير في الشريط العلوي للتبديل الفوري إلى أسلوب SLCD+. */
+    onSwitchStyle: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
@@ -115,13 +117,14 @@ fun SlcdComicReaderScreen(
 
     LaunchedEffect(seasonNumber, chapterNumber) {
         listReady = false
-        val loaded = withContext(Dispatchers.IO) {
-            repository.chapterFolder(root, seasonNumber, chapterNumber)
-                ?.let { repository.listChapterPages(it) }
-                ?: emptyList()
-        }
-        pages = loaded
+        pages = SlcdStructuralCache.ensurePages(repository, root, seasonNumber, chapterNumber)
         listReady = true
+        // تحميل هيكلي مسبق (بلا بيتماب) لمانفست الفصل التالي/السابق *ضمن نفس
+        // الموسم* — تخمين أفضل جهد لا يكلّف شيئاً إن أخطأ (الفصل التالي الفعلي
+        // قد يكون بداية موسم آخر)؛ لا يحدث أي وميض تحميل عند الانتقال الفعلي
+        // بينهما لاحقاً حين يكون التخمين صحيحاً.
+        if (hasNextChapter) SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber + 1)
+        if (hasPreviousChapter) SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber - 1)
     }
 
     // ── المرحلة ٢: ذاكرة صور محدودة النافذة — تُملأ عند itemsIndexed فقط ──
@@ -215,7 +218,8 @@ fun SlcdComicReaderScreen(
                 chapterNumber = chapterNumber,
                 currentPage = currentIndex + 1,
                 totalPages = pages.size,
-                onBack = onBack
+                onBack = onBack,
+                onSwitchStyle = onSwitchStyle
             )
         }
 
@@ -383,7 +387,8 @@ private fun ReaderTopBar(
     chapterNumber: Int,
     currentPage: Int,
     totalPages: Int,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSwitchStyle: (() -> Unit)? = null
 ) {
     Surface(color = SlcdInk.copy(alpha = 0.92f), shadowElevation = 4.dp) {
         Row(
@@ -410,6 +415,27 @@ private fun ReaderTopBar(
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1
                 )
+            }
+            if (onSwitchStyle != null) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = onSwitchStyle
+                        )
+                ) {
+                    Text(
+                        "SLCD+",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
             Surface(shape = RoundedCornerShape(20.dp), color = SlcdGold.copy(alpha = 0.16f)) {
                 Text(
