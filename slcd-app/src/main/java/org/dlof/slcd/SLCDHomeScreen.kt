@@ -79,17 +79,18 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
     val rootUriString = SlcdSettings.slcdRootUri
     var route by remember { mutableStateOf<SlcdRoute>(SlcdRoute.Library) }
     var library by remember { mutableStateOf<SlcdLibrary?>(null) }
+    var isLoadingLibrary by remember { mutableStateOf(true) }
     var reloadTick by remember { mutableStateOf(0) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(rootUriString, reloadTick) {
+        isLoadingLibrary = true
         val rootUri = rootUriString?.let { Uri.parse(it) }
         library = rootUri?.let { repo.loadLibrary(it) }
+        isLoadingLibrary = false
     }
 
     if (rootUriString == null || library == null) {
-        // احتياطي: لا يجب الوصول هنا فعلياً لأن SLCDInstallScreen تُعرض أولاً،
-        // لكن نتعامل بلطف مع أي حالة غير متوقعة (مثل إلغاء صلاحية المجلد يدوياً).
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -102,11 +103,19 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 )
             }
         ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "تعذّر الوصول لمكتبة SLCD. جرّب إعادة التثبيت من الإعدادات.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (isLoadingLibrary) {
+                // تحميل هيكلي أولي لجذر المكتبة — عناصر نائبة بشكل شعار SLCD
+                // بدل شاشة فارغة، بنفس تخطيط ومقاسات الشاشة الحقيقية.
+                SlcdLibrarySkeleton(modifier = Modifier.padding(padding).fillMaxSize())
+            } else {
+                // احتياطي: لا يجب الوصول هنا فعلياً لأن SLCDInstallScreen تُعرض أولاً،
+                // لكن نتعامل بلطف مع أي حالة غير متوقعة (مثل إلغاء صلاحية المجلد يدوياً).
+                Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "تعذّر الوصول لمكتبة SLCD. جرّب إعادة التثبيت من الإعدادات.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
         return
