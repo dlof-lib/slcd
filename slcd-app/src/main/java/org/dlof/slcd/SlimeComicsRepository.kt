@@ -83,7 +83,7 @@ class SlimeComicsRepository(private val context: Context) {
     // ملفات حقيقية اختيارية يضعها المستخدم بنفسه داخل مجلد الموسم عبر أي تطبيق ملفات
     // (أو عبر مستكشف الملفات)؛ لا تُنشأ هذه الملفات تلقائياً، بل تُكتشَف فقط إن وُجدت.
 
-    private const val INTRO_SEEN_FILE = ".slcd_intro_seen"
+    private val INTRO_SEEN_FILE = ".slcd_intro_seen"
 
     /** أول ملف بأحد الامتدادات المُعطاة يطابق `baseName.*` داخل مجلد، أو null إن لم يوجد. */
     private fun findMediaFile(folder: DocumentFile, baseName: String, extensions: List<String>): DocumentFile? {
