@@ -96,17 +96,6 @@ gradle :slcd-app:assembleRelease --stacktrace
 > gradle wrapper --gradle-version 8.7
 > ```
 
-### متغيرات التوقيع (نسخة Release فقط)
-
-| المتغيّر | الوصف |
-|---|---|
-| `APP_KEYSTORE_FILE` | مسار ملف الـ keystore |
-| `APP_KEYSTORE_PASSWORD` | كلمة مرور الـ keystore |
-| `APP_KEY_ALIAS` | اسم المفتاح |
-| `APP_KEY_PASSWORD` | كلمة مرور المفتاح |
-
----
-
 ## 🔄 التكامل المستمر (CI)
 
 يشغّل `.github/workflows/build_SLCD.yml` تلقائياً عند الدفع أو طلبات السحب على المسارات ذات الصلة (`slcd-app/**`, `core/**`, ملفات Gradle الجذرية)، وكذلك يدوياً عبر `workflow_dispatch` مع اختيار نوع البناء (`debug`/`release`). يشمل: Lint، اختبارات الوحدة، بناء الـ APK، ورفعه كـ Artifact مع تقرير Lint.
