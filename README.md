@@ -7,8 +7,10 @@
 ## ✨ المميزات
 
 - **قارئ ويبتون رأسي** بتمرير سلس وتحميل هيكلي على مرحلتين (فكّ أبعاد اللوحة أولاً `inJustDecodeBounds`، ثم محتواها الكامل) — يحجز المساحة بالنسبة الحقيقية للوحة فلا تحدث قفزة تخطيط عند اكتمال التحميل.
-- **نافذة ذاكرة محدودة** مع تفريغ فعلي (`recycle()`) للوحات خارج نطاق العرض، لتفادي استهلاك الذاكرة في القصص الطويلة.
-- **شريط تقدّم قابل للسحب** للتنقل السريع بين لوحات الفصل.
+- **أسلوب قراءة جديد: SLCD+** (`SlcdPlusReaderScreen`) — قراءة بالتقليب الأفقي، لوحة واحدة تملأ الشاشة، مع حركة تركيز/تكبير خفيفة عند دخول كل لوحة وتكبير بالنقر المزدوج. يمكن التبديل بينه وبين الويبتون في أي لحظة من زر صغير داخل شريط القراءة نفسه (`SlcdReaderRouter`)، والاختيار يُحفظ تلقائياً (`SlcdSettings.readingStyle`).
+- **نافذة ذاكرة محدودة** مع تفريغ فعلي (`recycle()`) للوحات خارج نطاق العرض، لتفادي استهلاك الذاكرة في القصص الطويلة (في كلا أسلوبي القراءة).
+- **تحميل هيكلي موسّع لكل فصل/موسم** (`SlcdStructuralCache`): مانفستات لوحات الفصول (أسماء الملفات فقط، بلا صور) تُحفظ في ذاكرة مشتركة تعيش طوال عمر التطبيق وتُحمَّل مسبقاً للفصل التالي/السابق بمجرد الاقتراب من حافة الفصل الحالي، فينتقل القارئ بين الفصول فوراً بلا وميض تحميل. كذلك تتوفر قراءة هيكلية "سطحية" للمكتبة (`listSeasonsShallow`/`loadLibraryShallow`) تحمّل قائمة المواسم فقط دون المرور على فصولها، وقراءة هيكلية لموسم واحد عند الطلب (`loadChaptersForSeason`) بدل المرور على كل فصول كل مواسم المكتبة دفعة واحدة.
+- **شريط تقدّم قابل للسحب** للتنقل السريع بين لوحات الفصل (في أسلوب الويبتون)، أو شريط نقاط/عدّاد مضغوط (في SLCD+).
 - **مكتبة قابلة للتخصيص**: مواسم وفصول مرتبة بالسحب والإفلات (Drag & Reorder).
 - **قالب جاهز (Template Seeder)**: زرع مباشر لمكتبة تجريبية من `assets/library_template` عند أول تشغيل.
 - **فتح ملفات `.dlof` خارجياً** عبر `ACTION_VIEW` كجسر خفيف مع تطبيقات أخرى تدعم الصيغة.
@@ -29,7 +31,7 @@ SLCD/
 | الوحدة | النوع | المسؤولية |
 |---|---|---|
 | `:core` | `com.android.library` | `DlofParser`, `DlofValidator`, `DlofCrypto`/`DlofCryptoV2`, `DlofRepository`, `TemplatePackageIO` |
-| `:slcd-app` | `com.android.application` | `MainActivity`, شاشات Splash/Install/Home/Reader، `SlcdApplication`, `SlcdSettings`, `SlcdTemplateSeeder` |
+| `:slcd-app` | `com.android.application` | `MainActivity`, شاشات Splash/Install/Home/Reader، `SlcdApplication`, `SlcdSettings`, `SlcdTemplateSeeder`، `SlcdReaderRouter` (يختار بين `SlcdComicReaderScreen` الويبتون و`SlcdPlusReaderScreen` الجديد)، `SlcdStructuralCache` (ذاكرة مانفستات الفصول/المواسم الهيكلية) |
 
 `slcd-app` يعتمد على `core` فقط عبر `implementation(project(":core"))`، دون أي ارتباط بتطبيقات أخرى.
 
@@ -136,6 +138,10 @@ SLCD/
         ├── AndroidManifest.xml
         ├── assets/library_template/   (مكتبة تجريبية جاهزة)
         ├── java/org/dlof/slcd/        (الشاشات والمنطق)
+        │   ├── SlcdReaderRouter.kt        (يختار أسلوب القراءة: ويبتون أو SLCD+)
+        │   ├── SlcdComicReaderScreen.kt   (أسلوب الويبتون الكلاسيكي)
+        │   ├── SlcdPlusReaderScreen.kt    (أسلوب SLCD+ الجديد بالتقليب)
+        │   └── SlcdStructuralCache.kt     (ذاكرة هيكلية مشتركة لمانفستات الفصول/المواسم)
         └── res/                       (الأيقونة، السمة، الموارد)
 ```
 
