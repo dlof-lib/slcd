@@ -76,10 +76,15 @@ jobs:
         if: ${{ github.event.inputs.build_type != 'release' }}
         run: gradle :slcd-app:assembleDebug --stacktrace
 
+      - name: فكّ ترميز keystore
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: |
+          echo "${{ secrets.SLCD_KEYSTORE_FILE }}" | base64 -d > slcd-app/release.keystore
+
       - name: بناء Release APK
         if: ${{ github.event.inputs.build_type == 'release' }}
         env:
-          APP_KEYSTORE_FILE: ${{ secrets.SLCD_KEYSTORE_FILE }}
+          APP_KEYSTORE_FILE: slcd-app/release.keystore
           APP_KEYSTORE_PASSWORD: ${{ secrets.SLCD_KEYSTORE_PASSWORD }}
           APP_KEY_ALIAS: ${{ secrets.SLCD_KEY_ALIAS }}
           APP_KEY_PASSWORD: ${{ secrets.SLCD_KEY_PASSWORD }}
@@ -93,6 +98,10 @@ jobs:
             slcd-app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: حذف ملف keystore المؤقت
+        if: ${{ always() && github.event.inputs.build_type == 'release' }}
+        run: rm -f slcd-app/release.keystore
 
       - name: رفع تقرير Lint
         if: always()
