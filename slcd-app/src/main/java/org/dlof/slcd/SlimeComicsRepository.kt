@@ -282,11 +282,6 @@ class SlimeComicsRepository(private val context: Context) {
         writeTitle(seasonDir, title)
     }
 
-    private fun findSeasonFolder(root: DocumentFile, seasonNumber: Int): DocumentFile? {
-        val seasonsDir = root.findFile(DIR_SEASONS) ?: return null
-        return seasonsDir.findFile("season$seasonNumber")
-    }
-
     /** يحدّث وصف موسم معيّن (description.txt داخل مجلده). */
     fun setSeasonDescription(root: DocumentFile, seasonNumber: Int, description: String) {
         val seasonDir = findSeasonFolder(root, seasonNumber) ?: return
