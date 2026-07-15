@@ -304,7 +304,7 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
             val season = lib.seasons.firstOrNull { it.number == current.seasonNumber }
             val chapter = season?.chapters?.firstOrNull { it.chapterNumber == current.chapterNumber }
 
-            SlcdComicReaderScreen(
+            SlcdReaderRouter(
                 repository = repo,
                 root = lib.root,
                 seasonNumber = current.seasonNumber,
