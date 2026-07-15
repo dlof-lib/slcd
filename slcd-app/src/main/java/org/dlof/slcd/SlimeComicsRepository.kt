@@ -37,6 +37,9 @@ class SlimeComicsRepository(private val context: Context) {
         const val DIR_COVERS = "covers"
         const val DIR_SEASONS = "seasons"
         const val DIR_CHAPTERS = "chapters"
+        const val DIR_CREDITS = "credits"
+        private const val DIR_CREDIT_PHOTOS = "photos"
+        private const val CREDITS_FILE = "credits.json"
         private const val TITLE_FILE = "title.txt"
         private const val DESCRIPTION_FILE = "description.txt"
         private const val GENRE_FILE = "genre.txt"
@@ -265,6 +268,128 @@ class SlimeComicsRepository(private val context: Context) {
     fun reorderCovers(root: DocumentFile, orderedCurrentNumbers: List<Int>) {
         val coversDir = root.findFile(DIR_COVERS) ?: return
         renumberDirectories(coversDir, "cover", orderedCurrentNumbers)
+    }
+
+    // ───────────────────────── فريق العمل وحقوق النشر (credits/) ─────────────────────────
+
+    /**
+     * يقرأ credits/credits.json إن وُجد ويحوّله إلى [SlcdCredits]، مع ملء
+     * [SlcdCreditPerson.photoUri] الفعلي لكل شخص له صورة محفوظة. لا يوجد
+     * ملف بعد ⇐ يعيد [SlcdCredits] فارغاً (لا خطأ) — نفس فلسفة الوصف/التصنيف
+     * الفارغين افتراضياً في بقية المستودع.
+     */
+    fun loadCredits(root: DocumentFile): SlcdCredits {
+        val creditsDir = root.findFile(DIR_CREDITS) ?: return SlcdCredits()
+        val json = readTextFile(creditsDir, CREDITS_FILE) ?: return SlcdCredits()
+        val photosDir = creditsDir.findFile(DIR_CREDIT_PHOTOS)
+        return try {
+            val obj = JSONObject(json)
+            val company = obj.optString("company").takeIf { it.isNotBlank() }
+            val copyright = obj.optString("copyright").takeIf { it.isNotBlank() }
+
+            val socialArray = obj.optJSONArray("social")
+            val social = buildList {
+                if (socialArray != null) {
+                    for (i in 0 until socialArray.length()) {
+                        val item = socialArray.optJSONObject(i) ?: continue
+                        val platform = item.optString("platform").takeIf { it.isNotBlank() } ?: continue
+                        val url = item.optString("url").takeIf { it.isNotBlank() } ?: continue
+                        add(SlcdSocialLink(platform = platform, url = url))
+                    }
+                }
+            }
+
+            val peopleArray = obj.optJSONArray("people")
+            val people = buildList {
+                if (peopleArray != null) {
+                    for (i in 0 until peopleArray.length()) {
+                        val item = peopleArray.optJSONObject(i) ?: continue
+                        val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                        val role = runCatching { SlcdCreditRole.valueOf(item.optString("role")) }.getOrNull() ?: continue
+                        val name = item.optString("name").takeIf { it.isNotBlank() } ?: continue
+                        val photoFileName = item.optString("photo").takeIf { it.isNotBlank() }
+                        val photoUri = photoFileName?.let { fileName -> photosDir?.findFile(fileName)?.uri }
+                        add(
+                            SlcdCreditPerson(
+                                id = id,
+                                role = role,
+                                name = name,
+                                photoFileName = photoFileName,
+                                photoUri = photoUri
+                            )
+                        )
+                    }
+                }
+            }
+
+            SlcdCredits(people = people, company = company, copyright = copyright, socialLinks = social)
+        } catch (_: Exception) {
+            SlcdCredits()
+        }
+    }
+
+    /** يحفظ كامل معلومات فريق العمل والنشر دفعة واحدة (يستبدل credits.json بالكامل). */
+    fun saveCredits(root: DocumentFile, credits: SlcdCredits) {
+        val creditsDir = root.findFile(DIR_CREDITS) ?: root.createDirectory(DIR_CREDITS) ?: return
+
+        val obj = JSONObject()
+        obj.put("company", credits.company ?: "")
+        obj.put("copyright", credits.copyright ?: "")
+
+        val socialArray = org.json.JSONArray()
+        credits.socialLinks.forEach { link ->
+            socialArray.put(JSONObject().apply {
+                put("platform", link.platform)
+                put("url", link.url)
+            })
+        }
+        obj.put("social", socialArray)
+
+        val peopleArray = org.json.JSONArray()
+        credits.people.forEach { person ->
+            peopleArray.put(JSONObject().apply {
+                put("id", person.id)
+                put("role", person.role.name)
+                put("name", person.name)
+                put("photo", person.photoFileName ?: "")
+            })
+        }
+        obj.put("people", peopleArray)
+
+        writeTextFile(creditsDir, CREDITS_FILE, obj.toString())
+    }
+
+    /**
+     * ينسخ صورة شخص من [imageUri] (نتيجة منتقي صور SAF) إلى credits/photos/،
+     * بعد حذف أي صورة قديمة لنفس [personId] أولاً (بأي امتداد). يعيد اسم
+     * الملف المحفوظ الجديد ليُخزَّن في [SlcdCreditPerson.photoFileName].
+     */
+    fun saveCreditPersonPhoto(root: DocumentFile, personId: String, imageUri: Uri): String? {
+        val creditsDir = root.findFile(DIR_CREDITS) ?: root.createDirectory(DIR_CREDITS) ?: return null
+        val photosDir = creditsDir.findFile(DIR_CREDIT_PHOTOS) ?: creditsDir.createDirectory(DIR_CREDIT_PHOTOS) ?: return null
+
+        photosDir.listFiles()
+            .filter { it.name?.substringBeforeLast('.') == personId }
+            .forEach { it.delete() }
+
+        val mime = context.contentResolver.getType(imageUri) ?: "image/jpeg"
+        val ext = if (mime.contains("png")) "png" else "jpg"
+        val fileName = "$personId.$ext"
+        val target = photosDir.createFile(mime, fileName) ?: return null
+        context.contentResolver.openInputStream(imageUri)?.use { input ->
+            context.contentResolver.openOutputStream(target.uri, "wt")?.use { output ->
+                input.copyTo(output)
+            }
+        }
+        return fileName
+    }
+
+    /** يحذف صورة شخص محفوظة (بأي امتداد) — يُستدعى عند حذف الشخص نفسه أو إزالة صورته فقط. */
+    fun deleteCreditPersonPhoto(root: DocumentFile, personId: String) {
+        val photosDir = root.findFile(DIR_CREDITS)?.findFile(DIR_CREDIT_PHOTOS) ?: return
+        photosDir.listFiles()
+            .filter { it.name?.substringBeforeLast('.') == personId }
+            .forEach { it.delete() }
     }
 
     // ───────────────────────── المواسم والفصول ─────────────────────────
