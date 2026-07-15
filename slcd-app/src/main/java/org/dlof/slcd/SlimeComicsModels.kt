@@ -79,3 +79,45 @@ data class SlcdLibrary(
     /** إجمالي عدد الفصول عبر كل المواسم — يُحسب مرة واحدة هنا لتفادي تكراره في الواجهة. */
     val totalChapterCount: Int get() = seasons.sumOf { it.chapters.size }
 }
+
+// ───────────────────────── فريق العمل وحقوق النشر (credits/) ─────────────────────────
+
+/** الأدوار الثابتة المدعومة في شاشة "فريق العمل" — يمكن لعدة أشخاص مشاركة نفس الدور. */
+enum class SlcdCreditRole(val displayName: String) {
+    AUTHOR("المؤلف"),
+    DIRECTOR("المخرج"),
+    SUPERVISOR("المشرف"),
+    WRITER("الكاتب"),
+    ARTIST("الرسام"),
+    COLORIST("التلوين"),
+    TRANSLATOR("الترجمة")
+}
+
+/** فرد واحد ضمن فريق العمل: دور + اسم + صورة شخصية اختيارية (محفوظة داخل credits/photos/). */
+data class SlcdCreditPerson(
+    val id: String,
+    val role: SlcdCreditRole,
+    val name: String,
+    /** اسم ملف الصورة داخل credits/photos/ (بلا مسار)، أو null إن لم تُضف صورة. */
+    val photoFileName: String? = null,
+    /** Uri فعلي للصورة المحفوظة، يُملأ عند القراءة من التخزين لعرضها مباشرة. */
+    val photoUri: Uri? = null
+)
+
+/** رابط تواصل اجتماعي واحد (منصّة + رابط)، مثال: ("إنستغرام", "https://instagram.com/..."). */
+data class SlcdSocialLink(
+    val platform: String,
+    val url: String
+)
+
+/**
+ * كامل معلومات "فريق العمل والنشر" لمكتبة SLCD — تُحفظ في credits/credits.json
+ * بجذر المكتبة، وتُحمَّل بشكل منفصل تماماً عن [SlcdLibrary] (كسول، عند فتح
+ * شاشة فريق العمل فقط) لأنها لا تلزم لتصفّح المواسم والفصول اليومي.
+ */
+data class SlcdCredits(
+    val people: List<SlcdCreditPerson> = emptyList(),
+    val company: String? = null,
+    val copyright: String? = null,
+    val socialLinks: List<SlcdSocialLink> = emptyList()
+)
