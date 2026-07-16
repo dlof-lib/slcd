@@ -1,7 +1,9 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
 }
+
+import java.util.Properties
 
 // ────────────────────────────────────────────────────────────────────────
 // تطبيق SLCD (Slime Comics dlof) — تطبيق مستقل بحزمته وأيقونته وواجهته
@@ -9,6 +11,16 @@ plugins {
 // وحدة :core لقراءة/كتابة تنسيق ملفات dlof (كل صفحة قصة مصورة هنا هي
 // ملف .dlof مصغّر يحمل صورة الصفحة كمرفق)، دون أي اعتماد على وحدة app.
 // ────────────────────────────────────────────────────────────────────────
+
+// ── توقيع الإصدار (release) — محلياً عبر keystore.properties (غير مرفوع
+// للريبو، انظر .gitignore و keystore.properties.sample)، أو في CI عبر
+// متغيرات البيئة APP_KEYSTORE_*. متغيرات البيئة لها الأولوية دائماً.
+val keystoreProperties = Properties().apply {
+    val propsFile = project.file("keystore.properties")
+    if (propsFile.exists()) {
+        propsFile.inputStream().use { load(it) }
+    }
+}
 
 android {
     namespace = "org.dlof.slcd"
@@ -20,16 +32,18 @@ android {
         targetSdk = 35          // Android 15: edge-to-edge إلزامي + predictive back
         versionCode = 1
         versionName = "1.0.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         create("release") {
-            val ksFile = System.getenv("APP_KEYSTORE_FILE")
+            val ksFile = System.getenv("APP_KEYSTORE_FILE") ?: keystoreProperties.getProperty("storeFile")
             if (ksFile != null) {
                 storeFile = file(ksFile)
-                storePassword = System.getenv("APP_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("APP_KEY_ALIAS")
-                keyPassword = System.getenv("APP_KEY_PASSWORD")
+                storePassword = System.getenv("APP_KEYSTORE_PASSWORD") ?: keystoreProperties.getProperty("storePassword")
+                keyAlias = System.getenv("APP_KEY_ALIAS") ?: keystoreProperties.getProperty("keyAlias")
+                keyPassword = System.getenv("APP_KEY_PASSWORD") ?: keystoreProperties.getProperty("keyPassword")
             }
         }
     }
@@ -38,7 +52,9 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (System.getenv("APP_KEYSTORE_FILE") != null) {
+            val hasSigningConfig = System.getenv("APP_KEYSTORE_FILE") != null ||
+                keystoreProperties.getProperty("storeFile") != null
+            if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
@@ -64,7 +80,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
 
     packaging {
@@ -78,30 +94,42 @@ dependencies {
     // ── محرّك حزم dlof المشترك (تحليل/تحقق/تشفير/مستودع القراءة) ──
     implementation(project(":core"))
 
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("androidx.activity:activity-compose:1.9.1")
-    implementation("androidx.activity:activity-ktx:1.9.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.kotlinx.coroutines.android)
 
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.animation:animation")
-    implementation("androidx.compose.animation:animation-core")
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.compose.animation.core)
 
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation(libs.androidx.documentfile)
 
     // ── Media3 / ExoPlayer — فيديو splash SLCD الاختياري ──────────
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-common:1.4.1")
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.common)
 
     // ── Coil — تحميل صور أغلفة المواسم ─────────────────────────────
-    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation(libs.coil.compose)
 
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation(libs.androidx.compose.ui.tooling)
+
+    testImplementation(libs.junit)
+
+    // ── اختبارات Instrumented (تعمل على جهاز/محاكي حقيقي) ──────────
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
