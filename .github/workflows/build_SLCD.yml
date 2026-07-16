@@ -35,7 +35,6 @@ on:
           - release
 
 env:
-  GRADLE_VERSION: "8.9"
   JAVA_VERSION: "17"
 
 jobs:
@@ -56,15 +55,32 @@ jobs:
       - name: إعداد Android SDK
         uses: android-actions/setup-android@v3
 
+      # مصدر الحقيقة الوحيد لإصدار Gradle هو gradle/wrapper/gradle-wrapper.properties
+      # (نفس الملف الذي يستخدمه ./gradlew محلياً) — لا يُكتب الإصدار هنا يدوياً
+      # أبداً، تفادياً لتكرار خطأ عدم التطابق الذي كان يكسر البناء سابقاً.
+      - name: استخراج إصدار Gradle من الـ wrapper
+        id: gradle-version
+        run: |
+          VERSION=$(grep -oP 'gradle-\K[0-9]+\.[0-9]+(\.[0-9]+)?(?=-(all|bin)\.zip)' gradle/wrapper/gradle-wrapper.properties)
+          if [ -z "$VERSION" ]; then
+            echo "تعذّر استخراج إصدار Gradle من gradle-wrapper.properties" >&2
+            exit 1
+          fi
+          echo "إصدار Gradle المكتشف: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: إعداد Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
+          gradle-version: ${{ steps.gradle-version.outputs.version }}
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      # ملاحظة: المستودع لا يحتوي حالياً على gradlew/gradlew.bat مُرفَقين،
-      # لذا يُستدعى Gradle مباشرة (عبر setup-gradle أعلاه) بدل ./gradlew.
-      # إن أُضيف wrapper لاحقاً، استبدل "gradle" بـ "./gradlew" هنا.
+      # ملاحظة: gradlew/gradlew.bat موجودان في المستودع الآن، لكن gradle-wrapper.jar
+      # (الملف الثنائي) غير مُرفق بعد — يجب توليده محلياً مرة واحدة بتشغيل:
+      #   gradle wrapper --gradle-version <الإصدار في gradle-wrapper.properties> --distribution-type all
+      # ثم إضافته للريبو. حتى ذلك الحين نستخدم "gradle" المُثبَّت عبر setup-gradle
+      # أعلاه (بنفس الإصدار المُستخرج من gradle-wrapper.properties)، وبعد إضافة
+      # الـ jar استبدل "gradle" بـ "./gradlew" في كل الخطوات التالية.
 
       - name: فحوصات Lint (:slcd-app)
         run: gradle :slcd-app:lintDebug --stacktrace
@@ -75,6 +91,22 @@ jobs:
       - name: بناء Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         run: gradle :slcd-app:assembleDebug --stacktrace
+
+      - name: تفعيل KVM (لتسريع محاكي Android)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: اختبارات Instrumented (:slcd-app على محاكي Android)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: gradle :slcd-app:connectedDebugAndroidTest --stacktrace
 
       - name: فكّ ترميز keystore
         if: ${{ github.event.inputs.build_type == 'release' }}
