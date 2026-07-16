@@ -45,6 +45,14 @@ class SlimeComicsRepository(private val context: Context) {
         private const val GENRE_FILE = "genre.txt"
         private const val FAVORITE_FILE = ".slcd_favorite"
         private const val READ_FILE = ".slcd_read"
+        private const val PUBLISHER_FILE = "publisher.txt"
+        private const val COUNTRY_FILE = "country.txt"
+        private const val EXTERNAL_LINK_FILE = "external_link.txt"
+        const val DIR_WINGS = "wings"
+        const val DIR_RIGHTS = "rights"
+        private const val RIGHTS_BASENAME = "rights"
+        private val IMAGE_EXTS = listOf("jpg", "jpeg", "png", "webp", "gif")
+        private val VIDEO_EXTS = listOf("mp4", "webm")
 
         /**
          * توقيع ثابت في بداية كل حزمة `.slcdpkg` — 8 بايت ASCII لا تطابق توقيع
@@ -93,6 +101,44 @@ class SlimeComicsRepository(private val context: Context) {
         return extensions.firstNotNullOfOrNull { ext -> folder.findFile("$baseName.$ext") }
     }
 
+    /** يحذف أي ملف `baseName.*` قديم بأحد الامتدادات المُعطاة قبل حفظ ملف جديد بنفس الاسم. */
+    private fun deleteMediaFile(folder: DocumentFile, baseName: String, extensions: List<String>) {
+        extensions.forEach { ext -> folder.findFile("$baseName.$ext")?.delete() }
+    }
+
+    /**
+     * ينسخ صورة من [sourceUri] إلى `folder/baseName.<ext>` (يحدّد الامتداد من نوع MIME)،
+     * بعد حذف أي صورة سابقة بنفس الاسم الأساسي أولاً. تُستخدم لكل صور SLCD الوصفية
+     * (غلاف القصة، أيقونة الموسم، غلاف الفصل، البانرات، الإعلانات...).
+     */
+    private fun saveImageFile(folder: DocumentFile, baseName: String, sourceUri: Uri): Uri? {
+        deleteMediaFile(folder, baseName, IMAGE_EXTS)
+        val mime = context.contentResolver.getType(sourceUri) ?: "image/jpeg"
+        val ext = when {
+            mime.contains("png") -> "png"
+            mime.contains("webp") -> "webp"
+            mime.contains("gif") -> "gif"
+            else -> "jpg"
+        }
+        val target = folder.createFile(mime, "$baseName.$ext") ?: return null
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            context.contentResolver.openOutputStream(target.uri, "wt")?.use { output -> input.copyTo(output) }
+        }
+        return target.uri
+    }
+
+    /** نظير [saveImageFile] لملفات الفيديو (بانر متحرك/إعلان فيديو): mp4 أو webm. */
+    private fun saveVideoFile(folder: DocumentFile, baseName: String, sourceUri: Uri): Uri? {
+        deleteMediaFile(folder, baseName, VIDEO_EXTS)
+        val mime = context.contentResolver.getType(sourceUri) ?: "video/mp4"
+        val ext = if (mime.contains("webm")) "webm" else "mp4"
+        val target = folder.createFile(mime, "$baseName.$ext") ?: return null
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            context.contentResolver.openOutputStream(target.uri, "wt")?.use { output -> input.copyTo(output) }
+        }
+        return target.uri
+    }
+
     /** بانر صورة/GIF ثابت للموسم (`banner.jpg`/`.png`/`.webp`/`.gif` داخل مجلد الموسم)، أو null. */
     fun seasonBannerImage(seasonFolder: DocumentFile): DocumentFile? =
         findMediaFile(seasonFolder, "banner", listOf("jpg", "jpeg", "png", "webp", "gif"))
@@ -104,6 +150,10 @@ class SlimeComicsRepository(private val context: Context) {
     /** فيديو مقدّمة (تشويقي) يُعرض تلقائياً أول مرة يُفتح فيها الموسم (`intro.mp4`/`.webm`). */
     fun seasonIntroVideo(seasonFolder: DocumentFile): DocumentFile? =
         findMediaFile(seasonFolder, "intro", listOf("mp4", "webm"))
+
+    fun setSeasonIntroVideo(seasonFolder: DocumentFile, uri: Uri): Uri? = saveVideoFile(seasonFolder, "intro", uri)
+
+    fun deleteSeasonIntroVideo(seasonFolder: DocumentFile) = deleteMediaFile(seasonFolder, "intro", VIDEO_EXTS)
 
     /** هل شاهد المستخدم فيديو مقدّمة هذا الموسم من قبل؟ (علامة محفوظة داخل مجلد الموسم نفسه). */
     fun hasSeenSeasonIntro(seasonFolder: DocumentFile): Boolean = hasFlag(seasonFolder, INTRO_SEEN_FILE)
@@ -419,6 +469,33 @@ class SlimeComicsRepository(private val context: Context) {
         writeGenre(seasonDir, genre)
     }
 
+    /**
+     * أيقونة الموسم (season_icon.*) — رمز صغير مميّز للموسم عند تصفّح المكتبة،
+     * مختلف عن [seasonBannerImage] (بانر كامل العرض) ومختلف عن غلاف القصة.
+     */
+    fun seasonIconUri(seasonFolder: DocumentFile): Uri? = findMediaFile(seasonFolder, "season_icon", IMAGE_EXTS)?.uri
+
+    fun setSeasonIcon(root: DocumentFile, seasonNumber: Int, imageUri: Uri): Uri? {
+        val seasonDir = findSeasonFolder(root, seasonNumber) ?: return null
+        return saveImageFile(seasonDir, "season_icon", imageUri)
+    }
+
+    fun deleteSeasonIcon(root: DocumentFile, seasonNumber: Int) {
+        findSeasonFolder(root, seasonNumber)?.let { deleteMediaFile(it, "season_icon", IMAGE_EXTS) }
+    }
+
+    fun setSeasonBannerImage(root: DocumentFile, seasonNumber: Int, uri: Uri) {
+        val seasonDir = findSeasonFolder(root, seasonNumber) ?: return
+        deleteMediaFile(seasonDir, "banner", VIDEO_EXTS)
+        saveImageFile(seasonDir, "banner", uri)
+    }
+
+    fun setSeasonBannerVideo(root: DocumentFile, seasonNumber: Int, uri: Uri) {
+        val seasonDir = findSeasonFolder(root, seasonNumber) ?: return
+        deleteMediaFile(seasonDir, "banner", IMAGE_EXTS)
+        saveVideoFile(seasonDir, "banner", uri)
+    }
+
     // ───────────────────────── وصف وتصنيف القصة كاملة (مستوى المكتبة) ─────────────────────────
 
     /** وصف عام للقصة كاملة، محفوظ في description.txt بجذر المكتبة مباشرة. */
@@ -430,6 +507,64 @@ class SlimeComicsRepository(private val context: Context) {
     fun setLibraryDescription(root: DocumentFile, description: String) = writeDescription(root, description)
 
     fun setLibraryGenre(root: DocumentFile, genre: String) = writeGenre(root, genre)
+
+    /** اسم/عنوان القصة كاملة — منفصل عن اسم التطبيق نفسه (title.txt بجذر المكتبة). */
+    fun libraryTitle(root: DocumentFile): String? = readTitle(root)
+
+    fun setLibraryTitle(root: DocumentFile, title: String) = writeTitle(root, title)
+
+    fun libraryPublisher(root: DocumentFile): String? = readTextFile(root, PUBLISHER_FILE)
+
+    fun setLibraryPublisher(root: DocumentFile, value: String) = writeTextFile(root, PUBLISHER_FILE, value)
+
+    fun libraryCountry(root: DocumentFile): String? = readTextFile(root, COUNTRY_FILE)
+
+    fun setLibraryCountry(root: DocumentFile, value: String) = writeTextFile(root, COUNTRY_FILE, value)
+
+    /** رابط خارجي افتراضي لكل القصة — يُستخدم إن لم يوفّر الفصل رابطه الخاص عبر [setChapterExternalLink]. */
+    fun libraryExternalLink(root: DocumentFile): String? = readTextFile(root, EXTERNAL_LINK_FILE)
+
+    fun setLibraryExternalLink(root: DocumentFile, value: String) = writeTextFile(root, EXTERNAL_LINK_FILE, value)
+
+    /** الغلاف الكامل الرئيسي للقصة (story_cover.* بجذر المكتبة)، منفصل عن معرض covers/. */
+    fun storyCoverUri(root: DocumentFile): Uri? = findMediaFile(root, "story_cover", IMAGE_EXTS)?.uri
+
+    fun setStoryCover(root: DocumentFile, imageUri: Uri): Uri? = saveImageFile(root, "story_cover", imageUri)
+
+    fun deleteStoryCover(root: DocumentFile) = deleteMediaFile(root, "story_cover", IMAGE_EXTS)
+
+    /** بانر القصة كاملة (صورة أو فيديو) — banner.* بجذر المكتبة مباشرة. */
+    fun storyBannerImage(root: DocumentFile): DocumentFile? = findMediaFile(root, "banner", IMAGE_EXTS)
+
+    fun storyBannerVideo(root: DocumentFile): DocumentFile? = findMediaFile(root, "banner", VIDEO_EXTS)
+
+    fun setStoryBannerImage(root: DocumentFile, uri: Uri) {
+        deleteMediaFile(root, "banner", VIDEO_EXTS)
+        saveImageFile(root, "banner", uri)
+    }
+
+    fun setStoryBannerVideo(root: DocumentFile, uri: Uri) {
+        deleteMediaFile(root, "banner", IMAGE_EXTS)
+        saveVideoFile(root, "banner", uri)
+    }
+
+    fun deleteStoryBanner(root: DocumentFile) {
+        deleteMediaFile(root, "banner", IMAGE_EXTS)
+        deleteMediaFile(root, "banner", VIDEO_EXTS)
+    }
+
+    /** إعلانات القصة: بانر صورة إعلاني (ad_banner.*) وفيديو إعلاني (ad_video.*)، منفصلان عن بانر القصة العادي. */
+    fun storyAdImage(root: DocumentFile): DocumentFile? = findMediaFile(root, "ad_banner", IMAGE_EXTS)
+
+    fun storyAdVideo(root: DocumentFile): DocumentFile? = findMediaFile(root, "ad_video", VIDEO_EXTS)
+
+    fun setStoryAdImage(root: DocumentFile, uri: Uri): Uri? = saveImageFile(root, "ad_banner", uri)
+
+    fun setStoryAdVideo(root: DocumentFile, uri: Uri): Uri? = saveVideoFile(root, "ad_video", uri)
+
+    fun deleteStoryAdImage(root: DocumentFile) = deleteMediaFile(root, "ad_banner", IMAGE_EXTS)
+
+    fun deleteStoryAdVideo(root: DocumentFile) = deleteMediaFile(root, "ad_video", VIDEO_EXTS)
 
     fun deleteSeason(root: DocumentFile, seasonNumber: Int) {
         val seasonsDir = root.findFile(DIR_SEASONS) ?: return
@@ -468,6 +603,166 @@ class SlimeComicsRepository(private val context: Context) {
         val seasonDir = seasonsDir.findFile("season$seasonNumber") ?: return
         val chaptersDir = seasonDir.findFile(DIR_CHAPTERS) ?: return
         renumberDirectories(chaptersDir, "chapter", orderedCurrentNumbers)
+    }
+
+    /** تصنيف اختياري خاص بفصل معيّن وحده (genre.txt داخل مجلد الفصل). */
+    fun setChapterGenre(root: DocumentFile, seasonNumber: Int, chapterNumber: Int, genre: String) {
+        val chapterDir = findChapterFolder(root, seasonNumber, chapterNumber) ?: return
+        writeGenre(chapterDir, genre)
+    }
+
+    /**
+     * غلاف مخصّص لفصل معيّن (chapter_cover.*) — إن لم يُضبط، تعتمد الواجهة سلسلة
+     * الاحتياط الافتراضية: غلاف الفصل ← أيقونة/غلاف الموسم ← غلاف القصة الرئيسي.
+     */
+    fun chapterCustomCoverUri(chapterFolder: DocumentFile): Uri? =
+        findMediaFile(chapterFolder, "chapter_cover", IMAGE_EXTS)?.uri
+
+    fun setChapterCover(root: DocumentFile, seasonNumber: Int, chapterNumber: Int, imageUri: Uri): Uri? {
+        val chapterDir = findChapterFolder(root, seasonNumber, chapterNumber) ?: return null
+        return saveImageFile(chapterDir, "chapter_cover", imageUri)
+    }
+
+    fun deleteChapterCover(root: DocumentFile, seasonNumber: Int, chapterNumber: Int) {
+        findChapterFolder(root, seasonNumber, chapterNumber)?.let { deleteMediaFile(it, "chapter_cover", IMAGE_EXTS) }
+    }
+
+    /** بانر الفصل نفسه (صورة أو فيديو) — منفصل عن بانر الموسم وبانر القصة. */
+    fun chapterBannerImage(chapterFolder: DocumentFile): DocumentFile? = findMediaFile(chapterFolder, "banner", IMAGE_EXTS)
+
+    fun chapterBannerVideo(chapterFolder: DocumentFile): DocumentFile? = findMediaFile(chapterFolder, "banner", VIDEO_EXTS)
+
+    fun setChapterBannerImage(root: DocumentFile, seasonNumber: Int, chapterNumber: Int, uri: Uri) {
+        val chapterDir = findChapterFolder(root, seasonNumber, chapterNumber) ?: return
+        deleteMediaFile(chapterDir, "banner", VIDEO_EXTS)
+        saveImageFile(chapterDir, "banner", uri)
+    }
+
+    fun setChapterBannerVideo(root: DocumentFile, seasonNumber: Int, chapterNumber: Int, uri: Uri) {
+        val chapterDir = findChapterFolder(root, seasonNumber, chapterNumber) ?: return
+        deleteMediaFile(chapterDir, "banner", IMAGE_EXTS)
+        saveVideoFile(chapterDir, "banner", uri)
+    }
+
+    /** رابط خارجي خاص بفصل معيّن — يُتحقّق منه أولاً قبل [libraryExternalLink] عند فتح الفصل للقراءة. */
+    fun setChapterExternalLink(root: DocumentFile, seasonNumber: Int, chapterNumber: Int, url: String) {
+        val chapterDir = findChapterFolder(root, seasonNumber, chapterNumber) ?: return
+        writeTextFile(chapterDir, EXTERNAL_LINK_FILE, url)
+    }
+
+    fun clearChapterExternalLink(root: DocumentFile, seasonNumber: Int, chapterNumber: Int) {
+        findChapterFolder(root, seasonNumber, chapterNumber)?.findFile(EXTERNAL_LINK_FILE)?.delete()
+    }
+
+    // ───────────────────────── أجنحة الفصل (wings/) ─────────────────────────
+    // فصل طويل يمكن تقسيمه لأجزاء منفصلة الصفحات، كل جزء يُقرأ باستقلالية ضمن
+    // نفس الفصل: seasons/seasonN/chapters/chapterM/wings/wingK/ يحمل صفحاته
+    // الخاصة (نفس آلية .dlofcomic المستخدمة لصفحات الفصل العادية).
+
+    /** يعثر على قائمة أجنحة فصل مُعطى مجلده مباشرة، مرتّبة برقم الجناح. */
+    fun listWings(chapterFolder: DocumentFile): List<SlcdWing> {
+        val wingsDir = chapterFolder.findFile(DIR_WINGS) ?: return emptyList()
+        return wingsDir.listFiles()
+            .filter { it.isDirectory && it.name?.startsWith("wing") == true }
+            .mapNotNull { dir ->
+                val number = dir.name?.removePrefix("wing")?.toIntOrNull() ?: return@mapNotNull null
+                val pages = dir.listFiles().count { it.name?.endsWith(".dlofcomic") == true }
+                SlcdWing(number = number, folder = dir, pageCount = pages, title = readTitle(dir))
+            }
+            .sortedBy { it.number }
+    }
+
+    /** يضيف جناحاً جديداً لفصل (رقمه تلقائي تالٍ لآخر جناح موجود) من مجموعة صور. */
+    fun addWingPages(
+        root: DocumentFile,
+        seasonNumber: Int,
+        chapterNumber: Int,
+        wingTitle: String,
+        pageImageUris: List<Uri>,
+        captions: List<String> = emptyList()
+    ): SlcdWing? {
+        val chapterFolder = createChapterFolder(root, seasonNumber, chapterNumber)
+        val wingsDir = chapterFolder.findFile(DIR_WINGS) ?: chapterFolder.createDirectory(DIR_WINGS) ?: return null
+        val nextNumber = (wingsDir.listFiles()
+            .filter { it.isDirectory && it.name?.startsWith("wing") == true }
+            .mapNotNull { it.name?.removePrefix("wing")?.toIntOrNull() }
+            .maxOrNull() ?: 0) + 1
+        val wingDir = wingsDir.createDirectory("wing$nextNumber") ?: return null
+        dlofRepository.createComicFromImages(
+            parentFolderUri = wingDir.uri,
+            seriesTitle = wingTitle,
+            imageUris = pageImageUris,
+            captions = captions
+        )
+        if (wingTitle.isNotBlank()) writeTitle(wingDir, wingTitle)
+        val pages = wingDir.listFiles().count { it.name?.endsWith(".dlofcomic") == true }
+        return SlcdWing(number = nextNumber, folder = wingDir, pageCount = pages, title = wingTitle.ifBlank { null })
+    }
+
+    fun renameWing(chapterFolder: DocumentFile, wingNumber: Int, title: String) {
+        val wingDir = chapterFolder.findFile(DIR_WINGS)?.findFile("wing$wingNumber") ?: return
+        writeTitle(wingDir, title)
+    }
+
+    fun deleteWing(chapterFolder: DocumentFile, wingNumber: Int) {
+        chapterFolder.findFile(DIR_WINGS)?.findFile("wing$wingNumber")?.delete()
+    }
+
+    fun reorderWings(chapterFolder: DocumentFile, orderedCurrentNumbers: List<Int>) {
+        val wingsDir = chapterFolder.findFile(DIR_WINGS) ?: return
+        renumberDirectories(wingsDir, "wing", orderedCurrentNumbers)
+    }
+
+    /** صفحات جناح واحد (نفس منطق [listChapterPages] تماماً — الجناح مجلد صفحات عادي). */
+    fun listWingPages(wingFolder: DocumentFile): List<DocumentFile> = listChapterPages(wingFolder)
+
+    // ───────────────────────── قاموس الحقوق (rights/) ─────────────────────────
+    // صفحة واحدة فقط بجذر المكتبة، بصيغة نصية (HTML/Markdown/نص) أو صورة —
+    // rights/rights.<ext>؛ حفظ صيغة جديدة يستبدل أي صيغة سابقة تلقائياً.
+
+    fun loadRightsDoc(root: DocumentFile): SlcdRightsDoc? {
+        val rightsDir = root.findFile(DIR_RIGHTS) ?: return null
+        val file = rightsDir.listFiles().firstOrNull { it.name?.startsWith("$RIGHTS_BASENAME.") == true } ?: return null
+        val ext = file.name.orEmpty().substringAfterLast('.', "").lowercase()
+        val format = when (ext) {
+            "html", "htm" -> SlcdRightsFormat.HTML
+            "md", "markdown" -> SlcdRightsFormat.MARKDOWN
+            "txt" -> SlcdRightsFormat.TEXT
+            "jpg", "jpeg", "png", "webp", "gif" -> SlcdRightsFormat.IMAGE
+            else -> return null
+        }
+        val text = if (format != SlcdRightsFormat.IMAGE) {
+            try {
+                context.contentResolver.openInputStream(file.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+        return SlcdRightsDoc(format = format, fileUri = file.uri, textContent = text)
+    }
+
+    /** يحفظ صفحة الحقوق كنص (HTML/Markdown/نص عادي)، ويستبدل أي صفحة حقوق سابقة (نصية أو صورة) تلقائياً. */
+    fun saveRightsText(root: DocumentFile, format: SlcdRightsFormat, content: String) {
+        if (format == SlcdRightsFormat.IMAGE) return
+        val rightsDir = root.findFile(DIR_RIGHTS) ?: root.createDirectory(DIR_RIGHTS) ?: return
+        rightsDir.listFiles().filter { it.name?.startsWith("$RIGHTS_BASENAME.") == true }.forEach { it.delete() }
+        val target = rightsDir.createFile("text/plain", "$RIGHTS_BASENAME.${format.extension}") ?: return
+        context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
+            out.write(content.toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    /** يحفظ صفحة الحقوق كصورة واحدة، ويستبدل أي صفحة حقوق سابقة (نصية أو صورة) تلقائياً. */
+    fun saveRightsImage(root: DocumentFile, imageUri: Uri) {
+        val rightsDir = root.findFile(DIR_RIGHTS) ?: root.createDirectory(DIR_RIGHTS) ?: return
+        rightsDir.listFiles().filter { it.name?.startsWith("$RIGHTS_BASENAME.") == true }.forEach { it.delete() }
+        saveImageFile(rightsDir, RIGHTS_BASENAME, imageUri)
+    }
+
+    fun deleteRights(root: DocumentFile) {
+        root.findFile(DIR_RIGHTS)?.listFiles()
+            ?.filter { it.name?.startsWith("$RIGHTS_BASENAME.") == true }
+            ?.forEach { it.delete() }
     }
 
     /**
@@ -733,7 +1028,11 @@ class SlimeComicsRepository(private val context: Context) {
                     alreadyPackaged = packaged,
                     title = readTitle(chapterDir),
                     isFavorite = hasFlag(chapterDir, FAVORITE_FILE),
-                    isRead = hasFlag(chapterDir, READ_FILE)
+                    isRead = hasFlag(chapterDir, READ_FILE),
+                    genre = readGenre(chapterDir),
+                    customCoverUri = chapterCustomCoverUri(chapterDir),
+                    wings = listWings(chapterDir),
+                    externalUrl = readTextFile(chapterDir, EXTERNAL_LINK_FILE)
                 )
             }
             .sortedBy { it.chapterNumber }
@@ -773,7 +1072,8 @@ class SlimeComicsRepository(private val context: Context) {
                     chapters = emptyList(),
                     title = readTitle(seasonDir),
                     description = readDescription(seasonDir),
-                    genre = readGenre(seasonDir)
+                    genre = readGenre(seasonDir),
+                    iconUri = seasonIconUri(seasonDir)
                 )
             }
             .sortedBy { it.number }
@@ -793,7 +1093,12 @@ class SlimeComicsRepository(private val context: Context) {
             covers = listCovers(root),
             seasons = listSeasons(root),
             description = libraryDescription(root),
-            genre = libraryGenre(root)
+            genre = libraryGenre(root),
+            title = libraryTitle(root),
+            coverUri = storyCoverUri(root),
+            publisher = libraryPublisher(root),
+            country = libraryCountry(root),
+            externalUrl = libraryExternalLink(root)
         )
     }
 
@@ -811,7 +1116,12 @@ class SlimeComicsRepository(private val context: Context) {
             covers = listCovers(root),
             seasons = listSeasonsShallow(root),
             description = libraryDescription(root),
-            genre = libraryGenre(root)
+            genre = libraryGenre(root),
+            title = libraryTitle(root),
+            coverUri = storyCoverUri(root),
+            publisher = libraryPublisher(root),
+            country = libraryCountry(root),
+            externalUrl = libraryExternalLink(root)
         )
     }
 }
