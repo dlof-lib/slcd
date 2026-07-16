@@ -2,6 +2,7 @@
 
 package org.dlof.slcd
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,6 +59,14 @@ private sealed class SlcdRoute {
     data class Reader(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
     /** شاشة فريق العمل والنشر — معلومات اعتماد اختيارية على مستوى المكتبة كاملة. */
     data object Credits : SlcdRoute()
+    /** شاشة إنشاء/تعديل معلومات القصة الكاملة (الاسم، الوصف، الناشر، الدولة، الغلاف، البانرات...). */
+    data object StoryInfo : SlcdRoute()
+    /** شاشة إنشاء/تعديل معلومات موسم (الاسم، الأيقونة، الوصف، البانر...). */
+    data class SeasonInfo(val seasonNumber: Int) : SlcdRoute()
+    /** شاشة معلومات الفصل المتقدّمة (التصنيف، الغلاف، البانر، الرابط الخارجي، الأجنحة). */
+    data class ChapterInfo(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
+    /** شاشة قاموس الحقوق (صفحة واحدة لكل المكتبة، HTML/Markdown/نص/صورة). */
+    data object Rights : SlcdRoute()
 }
 
 /**
@@ -125,6 +134,17 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
 
     val lib = library!!
 
+    // ── رابط خارجي: فصل معيّن قد يملك رابطه الخاص، وإلا يُستخدم رابط القصة الافتراضي.
+    // إن وُجد أي منهما يُفتح المتصفح مباشرة بدل الدخول لقارئ SLCD الداخلي.
+    fun resolveExternalUrl(chapter: SlcdChapter?): String? =
+        chapter?.externalUrl?.takeIf { it.isNotBlank() } ?: lib.externalUrl?.takeIf { it.isNotBlank() }
+
+    fun openExternalLink(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val opened = runCatching { context.startActivity(intent) }.isSuccess
+        if (!opened) toast = "تعذّر فتح الرابط الخارجي"
+    }
+
     when (val current = route) {
         is SlcdRoute.Library -> SlcdLibraryScreen(
             library = lib,
@@ -136,7 +156,10 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 }
             },
             onContinueReading = { chapter ->
-                if (chapter.pageCount > 0) {
+                val externalUrl = resolveExternalUrl(chapter)
+                if (externalUrl != null) {
+                    openExternalLink(externalUrl)
+                } else if (chapter.pageCount > 0) {
                     SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber)
                     route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber)
                 } else {
@@ -183,13 +206,66 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 SlcdSettings.uninstallSlcd(context)
                 onBack()
             },
-            onOpenCredits = { route = SlcdRoute.Credits }
+            onOpenCredits = { route = SlcdRoute.Credits },
+            onOpenStoryInfo = { route = SlcdRoute.StoryInfo },
+            onOpenRights = { route = SlcdRoute.Rights }
         )
 
         is SlcdRoute.Credits -> SlcdCreditsScreen(
             root = lib.root,
             onBack = { route = SlcdRoute.Library }
         )
+
+        is SlcdRoute.StoryInfo -> SlcdStoryInfoScreen(
+            root = lib.root,
+            library = lib,
+            onBack = { route = SlcdRoute.Library },
+            onSaved = { reloadTick++; route = SlcdRoute.Library; toast = "تم حفظ معلومات القصة" }
+        )
+
+        is SlcdRoute.Rights -> SlcdRightsScreen(
+            root = lib.root,
+            onBack = { route = SlcdRoute.Library }
+        )
+
+        is SlcdRoute.SeasonInfo -> {
+            val season = lib.seasons.firstOrNull { it.number == current.seasonNumber }
+            if (season == null) {
+                route = SlcdRoute.Library
+            } else {
+                SlcdSeasonInfoScreen(
+                    root = lib.root,
+                    season = season,
+                    onBack = { route = SlcdRoute.SeasonDetail(current.seasonNumber) },
+                    onSaved = {
+                        reloadTick++
+                        route = SlcdRoute.SeasonDetail(current.seasonNumber)
+                        toast = "تم حفظ معلومات الموسم"
+                    }
+                )
+            }
+        }
+
+        is SlcdRoute.ChapterInfo -> {
+            val season = lib.seasons.firstOrNull { it.number == current.seasonNumber }
+            val chapter = season?.chapters?.firstOrNull { it.chapterNumber == current.chapterNumber }
+            if (chapter == null) {
+                route = SlcdRoute.SeasonDetail(current.seasonNumber)
+            } else {
+                SlcdChapterInfoScreen(
+                    root = lib.root,
+                    chapter = chapter,
+                    fallbackSeasonIconUri = season.iconUri,
+                    fallbackStoryCoverUri = lib.coverUri,
+                    onBack = { route = SlcdRoute.ChapterDetail(current.seasonNumber, current.chapterNumber) },
+                    onSaved = {
+                        reloadTick++
+                        route = SlcdRoute.ChapterDetail(current.seasonNumber, current.chapterNumber)
+                        toast = "تم حفظ معلومات الفصل"
+                    }
+                )
+            }
+        }
 
         is SlcdRoute.SeasonDetail -> {
             val season = lib.seasons.firstOrNull { it.number == current.seasonNumber }
@@ -202,7 +278,10 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 onOpenChapter = { chapterNum -> route = SlcdRoute.ChapterDetail(current.seasonNumber, chapterNum) },
                 onReadChapter = { chapterNum ->
                     val chapter = season?.chapters?.firstOrNull { it.chapterNumber == chapterNum }
-                    if ((chapter?.pageCount ?: 0) > 0) {
+                    val externalUrl = resolveExternalUrl(chapter)
+                    if (externalUrl != null) {
+                        openExternalLink(externalUrl)
+                    } else if ((chapter?.pageCount ?: 0) > 0) {
                         SlcdSettings.markSlcdLastRead(context, current.seasonNumber, chapterNum)
                         route = SlcdRoute.Reader(current.seasonNumber, chapterNum)
                     } else {
@@ -260,7 +339,8 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 onReorderChapters = { orderedNumbers ->
                     repo.reorderChapters(lib.root, current.seasonNumber, orderedNumbers)
                     reloadTick++
-                }
+                },
+                onOpenSeasonInfo = { route = SlcdRoute.SeasonInfo(current.seasonNumber) }
             )
         }
 
@@ -278,7 +358,10 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                     onBack = { route = SlcdRoute.SeasonDetail(current.seasonNumber) },
                     onOpenChapter = { chapterNum -> route = SlcdRoute.ChapterDetail(current.seasonNumber, chapterNum) },
                     onRead = {
-                        if (chapter.pageCount > 0) {
+                        val externalUrl = resolveExternalUrl(chapter)
+                        if (externalUrl != null) {
+                            openExternalLink(externalUrl)
+                        } else if (chapter.pageCount > 0) {
                             SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber)
                             route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber)
                         } else {
@@ -303,7 +386,8 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                         )
                         reloadTick++
                         toast = "تم تصدير ${chapter.suggestedPackageName} — حزمة SLCD حصرية، تُفتح داخل SLCD فقط"
-                    }
+                    },
+                    onOpenChapterInfo = { route = SlcdRoute.ChapterInfo(current.seasonNumber, current.chapterNumber) }
                 )
             }
         }
@@ -375,7 +459,7 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
 // ───────────────────────── حوارات عامة: إعادة تسمية / تأكيد حذف ─────────────────────────
 
 @Composable
-private fun SlcdRenameDialog(
+internal fun SlcdRenameDialog(
     title: String,
     currentValue: String,
     onConfirm: (String) -> Unit,
@@ -404,7 +488,7 @@ private fun SlcdRenameDialog(
 }
 
 @Composable
-private fun SlcdConfirmDeleteDialog(
+internal fun SlcdConfirmDeleteDialog(
     itemLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -442,7 +526,9 @@ private fun SlcdLibraryScreen(
     onDeleteSeason: (Int) -> Unit,
     onReorderSeasons: (List<Int>) -> Unit,
     onUninstall: () -> Unit,
-    onOpenCredits: () -> Unit
+    onOpenCredits: () -> Unit,
+    onOpenStoryInfo: () -> Unit = {},
+    onOpenRights: () -> Unit = {}
 ) {
     var showAddSeasonDialog by remember { mutableStateOf(false) }
     var pendingCoverNumber by remember { mutableStateOf<Int?>(null) }
@@ -484,6 +570,14 @@ private fun SlcdLibraryScreen(
                         Icon(Icons.Filled.MoreVert, contentDescription = "خيارات")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("معلومات القصة") },
+                            onClick = { showMenu = false; onOpenStoryInfo() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("قاموس الحقوق") },
+                            onClick = { showMenu = false; onOpenRights() }
+                        )
                         DropdownMenuItem(
                             text = { Text("فريق العمل والنشر") },
                             onClick = { showMenu = false; onOpenCredits() }
@@ -864,7 +958,8 @@ private fun SlcdSeasonScreen(
     onAddChapter: (chapterNumber: Int, title: String, pages: List<Uri>) -> Unit,
     onRenameChapter: (Int, String) -> Unit,
     onDeleteChapter: (Int) -> Unit,
-    onReorderChapters: (List<Int>) -> Unit
+    onReorderChapters: (List<Int>) -> Unit,
+    onOpenSeasonInfo: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val repo = remember { SlimeComicsRepository(context) }
@@ -933,6 +1028,9 @@ private fun SlcdSeasonScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenSeasonInfo) {
+                        Icon(Icons.Filled.Edit, contentDescription = "معلومات الموسم")
+                    }
                     IconButton(onClick = { importPackageLauncher.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Filled.Archive, contentDescription = "استيراد حزمة SLCD (.slcdpkg)")
                     }
@@ -1260,7 +1358,8 @@ private fun SlcdChapterScreen(
     onRead: () -> Unit,
     onRename: (String) -> Unit,
     onToggleFavorite: () -> Unit = {},
-    onPackage: (Uri) -> Unit
+    onPackage: (Uri) -> Unit,
+    onOpenChapterInfo: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -1303,6 +1402,11 @@ private fun SlcdChapterScreen(
                             text = { Text("إعادة التسمية") },
                             leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                             onClick = { showMenu = false; showRenameDialog = true }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("معلومات الفصل المتقدّمة") },
+                            leadingIcon = { Icon(Icons.Filled.MoreVert, contentDescription = null) },
+                            onClick = { showMenu = false; onOpenChapterInfo() }
                         )
                     }
                 }
