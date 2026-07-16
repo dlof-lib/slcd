@@ -1,0 +1,80 @@
+name: Generate Gradle Wrapper
+
+# ─────────────────────────────────────────────────────────────────────────
+# workflow لمرة واحدة (أو عند الحاجة) يولّد gradle-wrapper.jar الحقيقي —
+# الملف الثنائي الوحيد الناقص من الـ wrapper — على رانر GitHub الذي يملك
+# اتصال إنترنت كامل، عكس بيئات محلية معزولة. يشغّل "gradle wrapper" ثم
+# يرفع (commit) الملفات الأربعة الناتجة مباشرة لنفس الفرع.
+#
+# يُشغَّل يدوياً فقط (workflow_dispatch) من تبويب Actions → هذا الـ
+# workflow → Run workflow. بعد نجاحه، احذفه أو اتركه — لا ضرر من بقائه،
+# لكنه غير مطلوب إلا إذا احتجت تغيير إصدار Gradle مستقبلاً.
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      gradle_version:
+        description: "إصدار Gradle المطلوب توليد الـ wrapper له"
+        required: true
+        default: "8.9"
+
+permissions:
+  contents: write
+
+jobs:
+  generate-wrapper:
+    name: توليد gradle-wrapper.jar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # لازم توكن بصلاحية كتابة حتى يقدر الخطوة الأخيرة تعمل push.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: إعداد JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: تثبيت Gradle مؤقتاً (نفس الإصدار المطلوب)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ github.event.inputs.gradle_version }}
+
+      - name: توليد ملفات الـ wrapper (gradlew, gradlew.bat, gradle-wrapper.jar)
+        run: gradle wrapper --gradle-version ${{ github.event.inputs.gradle_version }} --distribution-type all
+
+      - name: التأكد من أن gradle-wrapper.jar تولّد فعلاً
+        run: |
+          test -s gradle/wrapper/gradle-wrapper.jar || {
+            echo "gradle-wrapper.jar لم يتولّد أو فارغ" >&2
+            exit 1
+          }
+          ls -la gradle/wrapper/
+
+      - name: رفع الملفات الناتجة كـ Artifact (نسخة احتياطية)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-wrapper-files
+          path: |
+            gradlew
+            gradlew.bat
+            gradle/wrapper/gradle-wrapper.jar
+            gradle/wrapper/gradle-wrapper.properties
+          retention-days: 14
+
+      - name: Commit ورفع الملفات مباشرة للفرع
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
+          if git diff --cached --quiet; then
+            echo "لا تغييرات لعملها — الملفات موجودة مسبقاً ومطابقة."
+          else
+            git commit -m "chore: توليد gradle-wrapper.jar (${{ github.event.inputs.gradle_version }}) عبر GitHub Actions"
+            git push
+          fi
