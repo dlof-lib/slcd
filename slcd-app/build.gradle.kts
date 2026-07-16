@@ -12,12 +12,12 @@ plugins {
 
 android {
     namespace = "org.dlof.slcd"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "org.dlof.slcd"
         minSdk = 26            // Android 8+ (يكفي لأيقونة adaptive بلا PNG احتياطية)
-        targetSdk = 34
+        targetSdk = 35          // Android 15: edge-to-edge إلزامي + predictive back
         versionCode = 1
         versionName = "1.0.0"
     }
