@@ -1,6 +1,6 @@
 plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -30,8 +30,10 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.documentfile)
     // org.json.* متوفرة أصلاً ضمن منصّة أندرويد (android.jar) دون الحاجة
     // لإضافتها كاعتمادية خارجية — كما هو الحال في وحدة app.
+
+    testImplementation(libs.junit)
 }
