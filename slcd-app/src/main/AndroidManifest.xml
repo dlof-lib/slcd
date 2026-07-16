@@ -7,6 +7,15 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- إظهار متصفح الجهاز لفتح الروابط الخارجية لفصول/قصص SLCD (رؤية الحزم من Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".SlcdApplication"
         android:allowBackup="true"
@@ -15,7 +24,8 @@
         android:label="@string/slcd_app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Slcd"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"
