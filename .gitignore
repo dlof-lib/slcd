@@ -1,0 +1,43 @@
+### Gradle ###
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+!**/src/androidTest/**/build/
+
+### Android / Android Studio ###
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+output.json
+
+### IDE (Android Studio / IntelliJ) ###
+.idea/*
+!.idea/codeStyles/
+!.idea/runConfigurations/
+*.iml
+.navigation/
+*.iws
+.DS_Store
+
+### Kotlin ###
+.kotlin/
+
+### أسرار التوقيع — لا يجب رفعها أبداً ###
+keystore.properties
+*.keystore
+*.jks
+release.keystore
+
+### مخرجات وتقارير محلية ###
+*.log
+/captures
+.cache/
