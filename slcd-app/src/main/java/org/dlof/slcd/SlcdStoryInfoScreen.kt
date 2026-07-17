@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
 
-private val SlcdStoryGreen = Color(0xFF1D7A3F)
-private val SlcdStoryGold = Color(0xFFD2A020)
+private val SlcdStoryGreen = Color(0xFF10B981)
+private val SlcdStoryGold = Color(0xFFFBBF24)
 
 /** قائمة دول مقترحة للاختيار السريع — يبقى الحقل نصاً حراً فيمكن كتابة أي دولة أخرى يدوياً. */
 private val SlcdCommonCountries = listOf(
