@@ -86,8 +86,8 @@ import org.dlof.reader.model.AttachmentKind
  *    ختامية بزر "الفصل التالي" إن وُجد.
  */
 
-private val SlcdGreen = Color(0xFF1D7A3F)
-private val SlcdGold = Color(0xFFD2A020)
+private val SlcdGreen = Color(0xFF10B981)
+private val SlcdGold = Color(0xFFFBBF24)
 private val SlcdInk = Color(0xFF0D0D10)
 
 private const val PAGE_CACHE_WINDOW = 3
