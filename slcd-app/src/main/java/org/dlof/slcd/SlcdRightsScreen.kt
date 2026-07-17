@@ -27,7 +27,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
 
-private val SlcdRightsGreen = Color(0xFF1D7A3F)
+private val SlcdRightsGreen = Color(0xFF10B981)
 
 /**
  * ── شاشة "قاموس الحقوق" ─────────────────────────────────────────────────
