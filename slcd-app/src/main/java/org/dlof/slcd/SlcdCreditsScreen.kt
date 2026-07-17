@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-private val SlcdCreditsGreen = Color(0xFF1D7A3F)
+private val SlcdCreditsGreen = Color(0xFF10B981)
 
 /**
  * ── شاشة "فريق العمل والنشر" لمكتبة SLCD ────────────────────────────────
