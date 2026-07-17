@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -32,10 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,13 +45,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
-
-/** الأخضر/الذهبي الأساسي في DLoF، بإضافة بنفسجي مائل للطين (slime) خاص بهوية SLCD. */
-private val SlcdGreen = Color(0xFF1D7A3F)
-private val SlcdSlimePurple = Color(0xFF7C4DFF)
-private val SlcdGold = Color(0xFFD2A020)
-private val SlcdInk = Color(0xFF0B0B14)
-private val SlcdBackground = Color(0xFFEDEFF7)
 
 /**
  * مسار فيديو السبلاش التشويقي داخل أصول التطبيق — اختياري تماماً. لا يوجد
@@ -71,8 +61,8 @@ private const val SPLASH_VIDEO_ASSET_PATH = "slcd_tool_pkg/promo/splash.mp4"
  * تُعرض فور دخول المستخدم لأداة SLCD (من قائمة الأدوات) قبل شاشتَي
  * التثبيت/التصفح. تُفضّل فيديو سبلاش تشويقياً حقيقياً إن وُجد مرفقاً ضمن
  * أصول التطبيق ([SPLASH_VIDEO_ASSET_PATH])، وإلا (وهي الحال الافتراضية)
- * تعرض شعار "قطرة طين" مرسوماً عبر Canvas بحركة نبض ناعمة، بنفس روح
- * [org.dlof.reader.ui.screens.BrandedSplashScreen] الخاصة بـ DLoF نفسه.
+ * تعرض علامة "المروحة" الملوّنة ([SlcdFanMark]) — نفس شعار أيقونة
+ * التطبيق — مرسومة عبر Canvas بحركة نبض ناعمة.
  */
 @Composable
 fun SLCDSplashScreen(onFinished: () -> Unit) {
@@ -195,7 +185,7 @@ private fun SlcdSplashAnimated(onFinished: () -> Unit) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SlimeMark(
+            SlcdFanMark(
                 modifier = Modifier
                     .size(120.dp)
                     .alpha(logoAlpha.value)
@@ -251,55 +241,3 @@ private fun SlcdSplashAnimated(onFinished: () -> Unit) {
     }
 }
 
-/** شعار "قطرة طين" (slime drop) مرسوم برمجياً — بلا أصل صورة خارجي. */
-@Composable
-private fun SlimeMark(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        // قطرة الطين: دائرة سفلية أعرض + قمة مدببة ناعمة أعلاها.
-        val dropPath = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.5f, h * 0.06f)
-            cubicTo(
-                w * 0.86f, h * 0.34f,
-                w * 0.92f, h * 0.62f,
-                w * 0.5f, h * 0.96f
-            )
-            cubicTo(
-                w * 0.08f, h * 0.62f,
-                w * 0.14f, h * 0.34f,
-                w * 0.5f, h * 0.06f
-            )
-            close()
-        }
-
-        drawPath(
-            path = dropPath,
-            brush = Brush.linearGradient(
-                colors = listOf(SlcdGreen, SlcdSlimePurple),
-                start = Offset(0f, 0f),
-                end = Offset(w, h)
-            )
-        )
-        drawPath(
-            path = dropPath,
-            color = SlcdInk.copy(alpha = 0.12f),
-            style = Stroke(width = w * 0.02f)
-        )
-
-        // عينان بسيطتان تمنحان الشعار طابعاً ودوداً مناسباً لقصص مصورة.
-        val eyeRadius = w * 0.045f
-        drawCircle(Color.White, radius = eyeRadius, center = Offset(w * 0.4f, h * 0.55f))
-        drawCircle(Color.White, radius = eyeRadius, center = Offset(w * 0.6f, h * 0.55f))
-        drawCircle(SlcdInk, radius = eyeRadius * 0.5f, center = Offset(w * 0.41f, h * 0.56f))
-        drawCircle(SlcdInk, radius = eyeRadius * 0.5f, center = Offset(w * 0.61f, h * 0.56f))
-
-        // بريق علوي صغير يمنح تأثير "لمعان" احترافي.
-        drawCircle(
-            color = Color.White.copy(alpha = 0.55f),
-            radius = w * 0.05f,
-            center = Offset(w * 0.36f, h * 0.28f)
-        )
-    }
-}
