@@ -72,9 +72,8 @@ import org.dlof.slcd.settings.SlcdSettings
  *    (Webtoon) — الاختيار يُحفظ في [SlcdSettings.readingStyle].
  */
 
-private val SlcdGreen = Color(0xFF10B981)
-private val SlcdGold = Color(0xFFFBBF24)
-private val SlcdInk = Color(0xFF0D0D10)
+// SlcdGreen / SlcdGold مُعرَّفتان بالفعل (internal) في SlcdFanMark.kt — لا تُكرَّر هنا
+private val SlcdReaderInk = Color(0xFF0D0D10) // أغمق قليلاً من SlcdInk المشتركة، خاص بخلفية القارئ
 
 private const val PLUS_CACHE_WINDOW = 2
 private const val PLUS_DOT_STRIP_MAX = 24
@@ -150,7 +149,7 @@ fun SlcdPlusReaderScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SlcdInk)) {
+    Box(modifier = Modifier.fillMaxSize().background(SlcdReaderInk)) {
         when {
             !listReady -> ReaderLoadingStatePlus()
             pages.isEmpty() -> ReaderEmptyStatePlus(onBack = onBack)
@@ -329,7 +328,7 @@ private fun PlusReaderTopBar(
     onBack: () -> Unit,
     onSwitchToWebtoon: () -> Unit
 ) {
-    Surface(color = SlcdInk.copy(alpha = 0.92f), shadowElevation = 4.dp) {
+    Surface(color = SlcdReaderInk.copy(alpha = 0.92f), shadowElevation = 4.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -400,7 +399,7 @@ private fun PlusReaderBottomBar(
     onNextChapter: () -> Unit,
     onBackToLibrary: () -> Unit
 ) {
-    Surface(color = SlcdInk.copy(alpha = 0.94f), shadowElevation = 8.dp) {
+    Surface(color = SlcdReaderInk.copy(alpha = 0.94f), shadowElevation = 8.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
