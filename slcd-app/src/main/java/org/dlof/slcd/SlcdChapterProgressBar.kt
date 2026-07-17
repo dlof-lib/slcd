@@ -38,8 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-private val SlcdGreen = Color(0xFF1D7A3F)
-private val SlcdGold = Color(0xFFD2A020)
+private val SlcdGreen = Color(0xFF10B981)
+private val SlcdTeal = Color(0xFF0EA5A4)
+private val SlcdGold = Color(0xFFFBBF24)
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -268,7 +269,7 @@ private fun SlcdChapterProgressTrack(
                     .width(thumbCenter)
                     .height(trackHeight)
                     .clip(RoundedCornerShape(50))
-                    .background(Brush.horizontalGradient(listOf(SlcdGreen, SlcdGold)))
+                    .background(Brush.horizontalGradient(listOf(SlcdGreen, SlcdTeal, SlcdGold)))
             )
 
             // المؤشر القابل للسحب
@@ -284,7 +285,7 @@ private fun SlcdChapterProgressTrack(
                     .border(1.dp, SlcdGold.copy(alpha = 0.3f), CircleShape)
                     .padding(3.5.dp)
                     .clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(SlcdGreen, SlcdGold)))
+                    .background(Brush.radialGradient(listOf(SlcdGreen, SlcdTeal, SlcdGold)))
             )
 
             // فقاعة معاينة أثناء السحب
