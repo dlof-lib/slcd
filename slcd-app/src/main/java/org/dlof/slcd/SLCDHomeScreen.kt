@@ -48,8 +48,8 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import org.dlof.slcd.settings.SlcdSettings
 
-private val SlcdGreen = Color(0xFF1D7A3F)
-private val SlcdGold = Color(0xFFD2A020)
+private val SlcdGreen = Color(0xFF10B981)
+private val SlcdGold = Color(0xFFFBBF24)
 
 private sealed class SlcdRoute {
     data object Library : SlcdRoute()
