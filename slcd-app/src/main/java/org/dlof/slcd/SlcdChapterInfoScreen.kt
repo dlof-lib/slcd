@@ -32,8 +32,8 @@ import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 
-private val SlcdChapterGreen = Color(0xFF1D7A3F)
-private val SlcdChapterGold = Color(0xFFD2A020)
+private val SlcdChapterGreen = Color(0xFF10B981)
+private val SlcdChapterGold = Color(0xFFFBBF24)
 
 /**
  * ── شاشة "معلومات الفصل المتقدّمة" ───────────────────────────────────────
