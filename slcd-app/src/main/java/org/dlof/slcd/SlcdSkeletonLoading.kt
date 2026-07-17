@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
  */
 
 private val SlcdSkeletonBase = Color(0xFF1B2320)
-private val SlcdSkeletonHighlight = Color(0xFF34D399).copy(alpha = 0.22f)
+private val SlcdSkeletonHighlight = Color(0xFF10B981).copy(alpha = 0.22f)
 
 /** شعاع لمعان قطري متحرّك يُستخدم كخلفية لكل عناصر التحميل الهيكلي هنا. */
 @Composable
