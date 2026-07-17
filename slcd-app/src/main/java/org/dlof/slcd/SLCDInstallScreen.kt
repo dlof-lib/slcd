@@ -26,7 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.dlof.slcd.settings.SlcdSettings
 
-private val SlcdGreen = Color(0xFF1D7A3F)
+private val SlcdGreen = Color(0xFF10B981)
 
 /**
  * ── شاشة "تثبيت" Slime Comics dlof (SLCD) ─────────────────────────────
