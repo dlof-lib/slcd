@@ -38,9 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-private val SlcdGreen = Color(0xFF10B981)
+// SlcdGreen / SlcdGold مُعرَّفتان بالفعل (internal) في SlcdFanMark.kt — لا تُكرَّر هنا
 private val SlcdTeal = Color(0xFF0EA5A4)
-private val SlcdGold = Color(0xFFFBBF24)
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
