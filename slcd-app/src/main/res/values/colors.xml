@@ -2,4 +2,5 @@
 <resources>
     <color name="slcd_ink">#0B0F12</color>
     <color name="slcd_slime_green">#34D399</color>
+    <color name="slcd_icon_plate">#F7F8F7</color>
 </resources>
