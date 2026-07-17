@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
 
-private val SlcdSeasonGreen = Color(0xFF1D7A3F)
+private val SlcdSeasonGreen = Color(0xFF10B981)
 
 /**
  * ── شاشة "إنشاء/تعديل موسم" ─────────────────────────────────────────────
