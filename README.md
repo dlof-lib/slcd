@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/app_icon.png" width="128" height="128" alt="SLCD app icon" />
+<img src="assets/app_icon.png" width="128" height="128" alt="SLCD app icon" />
 
 # SLCD — قصص سلايم المصورة
 ### Slime Comics dlof
@@ -32,7 +32,7 @@
 ## 🎨 الهوية البصرية
 
 <div align="center">
-<img src="./assets/app_icon_tile.png" width="220" alt="SLCD app icon on tile" />
+<img src="assets/app_icon_tile.png" width="220" alt="SLCD app icon on tile" />
 </div>
 
 أيقونة adaptive جديدة بعلامة "المروحة" الملوّنة (زمرّدي، تركواز، كهرماني، مرجاني، أزرق سماوي) على لوحة فاتحة — نفس اللوحة اللونية امتدّت لتوحّد شاشة البداية، شاشة/مؤشر التحميل، وكل الأزرار والشارات وأشرطة التقدّم عبر التطبيق، بدل الأخضر الغامق/الذهبي الباهت القديمين.
