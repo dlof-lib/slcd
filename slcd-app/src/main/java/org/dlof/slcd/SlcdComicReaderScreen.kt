@@ -86,9 +86,8 @@ import org.dlof.reader.model.AttachmentKind
  *    ختامية بزر "الفصل التالي" إن وُجد.
  */
 
-private val SlcdGreen = Color(0xFF10B981)
-private val SlcdGold = Color(0xFFFBBF24)
-private val SlcdInk = Color(0xFF0D0D10)
+// SlcdGreen / SlcdGold مُعرَّفتان بالفعل (internal) في SlcdFanMark.kt — لا تُكرَّر هنا
+private val SlcdReaderInk = Color(0xFF0D0D10) // أغمق قليلاً من SlcdInk المشتركة، خاص بخلفية القارئ
 
 private const val PAGE_CACHE_WINDOW = 3
 
@@ -174,7 +173,7 @@ fun SlcdComicReaderScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SlcdInk)
+            .background(SlcdReaderInk)
     ) {
         when {
             !listReady -> ReaderLoadingState()
@@ -390,7 +389,7 @@ private fun ReaderTopBar(
     onBack: () -> Unit,
     onSwitchStyle: (() -> Unit)? = null
 ) {
-    Surface(color = SlcdInk.copy(alpha = 0.92f), shadowElevation = 4.dp) {
+    Surface(color = SlcdReaderInk.copy(alpha = 0.92f), shadowElevation = 4.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -515,7 +514,7 @@ private fun SlcdPageScrubber(
 
     fun fractionToIndex(fraction: Float): Int = Math.round(fraction.coerceIn(0f, 1f) * (safeTotal - 1))
 
-    Surface(color = SlcdInk.copy(alpha = 0.94f), shadowElevation = 8.dp) {
+    Surface(color = SlcdReaderInk.copy(alpha = 0.94f), shadowElevation = 8.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
