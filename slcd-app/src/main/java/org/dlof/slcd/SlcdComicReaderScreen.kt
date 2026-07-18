@@ -49,7 +49,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlof.reader.model.AttachmentKind
+import org.dlof.slcd.settings.SlcdSettings
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -106,29 +109,71 @@ fun SlcdComicReaderScreen(
     onPreviousChapter: () -> Unit = {},
     /** إن كانت غير null، يظهر زر صغير في الشريط العلوي للتبديل الفوري إلى أسلوب SLCD+. */
     onSwitchStyle: (() -> Unit)? = null,
+    /**
+     * أجنحة هذا الفصل (نظام الأجنحة — راجع [SlcdWing])، فارغة لفصل عادي
+     * بصفحات مباشرة بلا تقسيم درامي. عند توفّرها تُقرأ الأجنحة بالتتابع
+     * داخل نفس شاشة القارئ (بلا إعادة تحميل هيكلي) وتظهر بطاقة تشويق
+     * خاصة (Cliffhanger) بدل بطاقة "نهاية الفصل" العادية عند نهاية كل
+     * جناح ما عدا الأخير.
+     */
+    wings: List<SlcdWing> = emptyList(),
+    /** رقم الجناح الذي يجب فتحه أولاً؛ null = قراءة صفحات الفصل المباشرة (بلا أجنحة) أو أول جناح تلقائياً إن وُجدت أجنحة. */
+    initialWingNumber: Int? = null,
 ) {
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+
+    // إعداد متقدّم/مخفي: إبقاء الشاشة مضاءة أثناء القراءة (يمنع القفل
+    // التلقائي في منتصف فصل طويل). يُعاد الوضع الطبيعي عند مغادرة القارئ.
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = SlcdSettings.keepScreenOnWhileReading
+        onDispose { view.keepScreenOn = false }
+    }
+
+    // ── الجناح النشط حالياً ضمن نظام الأجنحة (null = فصل بلا أجنحة) ──
+    var activeWing by remember(seasonNumber, chapterNumber) {
+        mutableStateOf(initialWingNumber ?: wings.firstOrNull()?.number)
+    }
+    val sortedWings = remember(wings) { wings.sortedBy { it.number } }
+    val activeWingIndex = remember(sortedWings, activeWing) { sortedWings.indexOfFirst { it.number == activeWing } }
+    val currentWing = sortedWings.getOrNull(activeWingIndex)
+    val nextWing = sortedWings.getOrNull(activeWingIndex + 1)
+    val isLastWingOrNoWings = sortedWings.isEmpty() || nextWing == null
 
     // ── المرحلة ١ من التحميل الهيكلي: قائمة اللوحات فقط (سريع وخفيف) ──
-    var pages by remember(seasonNumber, chapterNumber) { mutableStateOf<List<DocumentFile>>(emptyList()) }
-    var listReady by remember(seasonNumber, chapterNumber) { mutableStateOf(false) }
+    var pages by remember(seasonNumber, chapterNumber, activeWing) { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var listReady by remember(seasonNumber, chapterNumber, activeWing) { mutableStateOf(false) }
 
-    LaunchedEffect(seasonNumber, chapterNumber) {
+    LaunchedEffect(seasonNumber, chapterNumber, activeWing) {
         listReady = false
-        pages = SlcdStructuralCache.ensurePages(repository, root, seasonNumber, chapterNumber)
+        pages = SlcdStructuralCache.ensurePages(repository, root, seasonNumber, chapterNumber, activeWing)
         listReady = true
-        // تحميل هيكلي مسبق (بلا بيتماب) لمانفست الفصل التالي/السابق *ضمن نفس
-        // الموسم* — تخمين أفضل جهد لا يكلّف شيئاً إن أخطأ (الفصل التالي الفعلي
-        // قد يكون بداية موسم آخر)؛ لا يحدث أي وميض تحميل عند الانتقال الفعلي
-        // بينهما لاحقاً حين يكون التخمين صحيحاً.
-        if (hasNextChapter) SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber + 1)
-        if (hasPreviousChapter) SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber - 1)
+        // ربط مباشر مع نظام التقدّم في SlcdSettings: يُحدَّث "آخر جناح مقروء"
+        // لهذا الفصل تحديداً (يظهر لاحقاً كبطاقة تقدّم في شاشة الموسم) وكذلك
+        // "آخر قراءة عامة" لبطاقة متابعة القراءة في المكتبة، بحيث تُستأنف
+        // القراءة عند نفس الجناح بالضبط لا بداية الفصل دائماً.
+        if (activeWing != null) {
+            SlcdSettings.recordWingRead(context, seasonNumber, chapterNumber, activeWing!!)
+        }
+        SlcdSettings.markSlcdLastRead(context, seasonNumber, chapterNumber, activeWing)
+        // تحميل هيكلي مسبق (بلا بيتماب) للجناح التالي إن وُجد، وإلا لمانفست
+        // الفصل التالي/السابق *ضمن نفس الموسم* — تخمين أفضل جهد لا يكلّف شيئاً
+        // إن أخطأ؛ لا يحدث أي وميض تحميل عند الانتقال الفعلي حين يكون صحيحاً.
+        if (nextWing != null) {
+            SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber, nextWing.number)
+        } else {
+            if (hasNextChapter) SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber + 1)
+        }
+        if (hasPreviousChapter && sortedWings.isEmpty()) {
+            SlcdStructuralCache.prefetchPages(repository, root, seasonNumber, chapterNumber - 1)
+        }
     }
 
     // ── المرحلة ٢: ذاكرة صور محدودة النافذة — تُملأ عند itemsIndexed فقط ──
-    val bitmapCache = remember(seasonNumber, chapterNumber) { mutableStateMapOf<Int, Bitmap>() }
-    DisposableEffect(seasonNumber, chapterNumber) {
+    val bitmapCache = remember(seasonNumber, chapterNumber, activeWing) { mutableStateMapOf<Int, Bitmap>() }
+    DisposableEffect(seasonNumber, chapterNumber, activeWing) {
         onDispose {
             bitmapCache.values.forEach { if (!it.isRecycled) it.recycle() }
             bitmapCache.clear()
@@ -146,17 +191,20 @@ fun SlcdComicReaderScreen(
     // تفريغ اللوحات البعيدة عن نافذة العرض + تحرير ذاكرتها فعلياً.
     LaunchedEffect(currentIndex, pages.size) {
         if (pages.isEmpty()) return@LaunchedEffect
-        val keep = (currentIndex - PAGE_CACHE_WINDOW)..(currentIndex + PAGE_CACHE_WINDOW)
+        val window = SlcdSettings.pageBitmapWindow
+        val keep = (currentIndex - window)..(currentIndex + window)
         val toEvict = bitmapCache.keys.filter { it !in keep }
         toEvict.forEach { idx ->
             bitmapCache.remove(idx)?.let { if (!it.isRecycled) it.recycle() }
         }
     }
 
-    // وصلنا للوحة الأخيرة فعلياً؟ نعلّم الفصل مقروءاً تلقائياً مرة واحدة.
-    LaunchedEffect(listState, pages.size) {
+    // وصلنا للوحة الأخيرة فعلياً؟ نعلّم الفصل مقروءاً تلقائياً مرة واحدة — فقط
+    // عند آخر جناح (أو فصل بلا أجنحة إطلاقاً)، فلا يُعلَّم الفصل "مقروء" وهو
+    // ما يزال في منتصف رحلته السردية عبر أجنحته.
+    LaunchedEffect(listState, pages.size, activeWing) {
         snapshotFlowLastItemVisible(listState, pages.size).collect { reachedEnd ->
-            if (reachedEnd && pages.isNotEmpty() && !hasMarkedRead) {
+            if (reachedEnd && pages.isNotEmpty() && !hasMarkedRead && isLastWingOrNoWings) {
                 hasMarkedRead = true
                 withContext(Dispatchers.IO) {
                     repository.markChapterRead(root, seasonNumber, chapterNumber)
@@ -192,12 +240,22 @@ fun SlcdComicReaderScreen(
                             onTap = { chromeVisible = !chromeVisible }
                         )
                     }
-                    item(key = "end-of-chapter") {
-                        EndOfChapterCard(
-                            hasNextChapter = hasNextChapter,
-                            onNextChapter = onNextChapter,
-                            onBackToLibrary = onBack
-                        )
+                    item(key = "end-of-chapter-$activeWing") {
+                        if (currentWing != null && nextWing != null) {
+                            // ── نهاية جناح غير أخير: بطاقة تشويق (Cliffhanger) ──
+                            WingCliffhangerCard(
+                                wing = currentWing,
+                                nextWing = nextWing,
+                                onNextWing = { activeWing = nextWing.number },
+                                onBackToLibrary = onBack
+                            )
+                        } else {
+                            EndOfChapterCard(
+                                hasNextChapter = hasNextChapter,
+                                onNextChapter = onNextChapter,
+                                onBackToLibrary = onBack
+                            )
+                        }
                     }
                 }
             }
@@ -212,7 +270,10 @@ fun SlcdComicReaderScreen(
         ) {
             ReaderTopBar(
                 seasonTitle = seasonTitle,
-                chapterTitle = chapterTitle,
+                chapterTitle = if (currentWing != null) {
+                    val wingLabel = currentWing.title?.let { "· $it" } ?: ""
+                    "${chapterTitle ?: "الفصل $chapterNumber"} — الجناح ${currentWing.number} $wingLabel".trim()
+                } else chapterTitle,
                 seasonNumber = seasonNumber,
                 chapterNumber = chapterNumber,
                 currentPage = currentIndex + 1,
@@ -476,6 +537,75 @@ private fun EndOfChapterCard(
             }
             Spacer(Modifier.height(10.dp))
         }
+        TextButton(onClick = onBackToLibrary) {
+            Text("العودة للمكتبة", color = Color.White.copy(alpha = 0.7f))
+        }
+    }
+}
+
+/**
+ * ── بطاقة ختام جناح غير أخير: لحظة تشويق (Cliffhanger) ─────────────────
+ *
+ * تظهر بدل [EndOfChapterCard] كلما وصل القارئ لنهاية جناح ضمن نظام الأجنحة
+ * وله جناح تالٍ ضمن نفس الفصل. تبرز بصرياً (لون كهرماني/مرجاني بدل الأخضر
+ * المعتاد) وتعرض ملاحظة التشويق إن كتبها المؤلف عبر
+ * [SlimeComicsRepository.setWingCliffhanger]، مع زر مباشر للانتقال للجناح
+ * التالي بلا خروج من شاشة القراءة (الانتقال محلي داخل [SlcdComicReaderScreen]).
+ */
+@Composable
+private fun WingCliffhangerCard(
+    wing: SlcdWing,
+    nextWing: SlcdWing,
+    onNextWing: () -> Unit,
+    onBackToLibrary: () -> Unit
+) {
+    val accent = if (wing.isCliffhanger) Color(0xFFFB7185) else SlcdGold
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = accent.copy(alpha = 0.16f),
+            modifier = Modifier.padding(bottom = 12.dp)
+        ) {
+            Text(
+                if (wing.isCliffhanger) "لحظة تشويق ⚡" else "نهاية الجناح ${wing.number}",
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+        }
+        if (!wing.cliffhangerNote.isNullOrBlank()) {
+            Text(
+                wing.cliffhangerNote,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        } else {
+            Text(
+                "انتهى الجناح ${wing.number} — تابع الجناح ${nextWing.number} الآن",
+                color = Color.White.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Button(
+            onClick = onNextWing,
+            colors = ButtonDefaults.buttonColors(containerColor = accent)
+        ) {
+            Text(nextWing.title?.let { "الجناح ${nextWing.number} · $it" } ?: "الجناح ${nextWing.number} التالي", color = Color.Black)
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Filled.ChevronLeft, contentDescription = null, tint = Color.Black)
+        }
+        Spacer(Modifier.height(10.dp))
         TextButton(onClick = onBackToLibrary) {
             Text("العودة للمكتبة", color = Color.White.copy(alpha = 0.7f))
         }
