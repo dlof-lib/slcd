@@ -51,6 +51,10 @@ class SlimeComicsRepository(private val context: Context) {
         const val DIR_WINGS = "wings"
         const val DIR_RIGHTS = "rights"
         private const val RIGHTS_BASENAME = "rights"
+        private const val CLIFFHANGER_FILE = ".slcd_cliffhanger"
+        /** المدى الموصى به لعدد صفحات الجناح الواحد كوحدة درامية متكاملة (راجع نظام الأجنحة). */
+        const val WING_RECOMMENDED_MIN_PAGES = 9
+        const val WING_RECOMMENDED_MAX_PAGES = 10
         private val IMAGE_EXTS = listOf("jpg", "jpeg", "png", "webp", "gif")
         private val VIDEO_EXTS = listOf("mp4", "webm")
 
@@ -667,9 +671,75 @@ class SlimeComicsRepository(private val context: Context) {
             .mapNotNull { dir ->
                 val number = dir.name?.removePrefix("wing")?.toIntOrNull() ?: return@mapNotNull null
                 val pages = dir.listFiles().count { it.name?.endsWith(".dlofcomic") == true }
-                SlcdWing(number = number, folder = dir, pageCount = pages, title = readTitle(dir))
+                val cliffhangerNote = readTextFile(dir, CLIFFHANGER_FILE)
+                SlcdWing(
+                    number = number,
+                    folder = dir,
+                    pageCount = pages,
+                    title = readTitle(dir),
+                    // وجود الملف = تفعيل الـ cliffhanger، حتى لو كانت الملاحظة فارغة.
+                    isCliffhanger = dir.findFile(CLIFFHANGER_FILE) != null,
+                    cliffhangerNote = cliffhangerNote
+                )
             }
             .sortedBy { it.number }
+    }
+
+    /** مجلد جناح واحد مباشرة (لفتحه للقراءة)، أو null إن لم يوجد. */
+    fun wingFolder(chapterFolder: DocumentFile, wingNumber: Int): DocumentFile? =
+        chapterFolder.findFile(DIR_WINGS)?.findFile("wing$wingNumber")
+
+    /**
+     * يفعّل/يعدّل/يلغي لحظة التشويق الختامية لجناح: [note] فارغ أو null يلغي
+     * الـ cliffhanger تماماً، أي نص آخر (ولو فارغاً بمسافات فقط بعد المعالجة
+     * الداخلية يُعامل كإلغاء) يفعّله بتلك الملاحظة. استدعِ [listWings] بعدها
+     * لتحديث الواجهة.
+     */
+    fun setWingCliffhanger(chapterFolder: DocumentFile, wingNumber: Int, enabled: Boolean, note: String = "") {
+        val wingDir = chapterFolder.findFile(DIR_WINGS)?.findFile("wing$wingNumber") ?: return
+        if (!enabled) {
+            wingDir.findFile(CLIFFHANGER_FILE)?.delete()
+            return
+        }
+        // ملاحظة فارغة مسموحة (cliffhanger بلا نص خاص، يُعرض نص افتراضي في الواجهة)
+        // لكن يجب أن يبقى الملف موجوداً كعلامة تفعيل، لذا لا نستخدم writeTextFile
+        // العادية (تحذف الملف عند القيمة الفارغة) بل نكتب مباشرة.
+        val trimmed = note.trim()
+        val existing = wingDir.findFile(CLIFFHANGER_FILE)
+        val target = existing ?: wingDir.createFile("text/plain", CLIFFHANGER_FILE) ?: return
+        context.contentResolver.openOutputStream(target.uri, "wt")?.use { out ->
+            out.write(trimmed.toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    /**
+     * تقسيم تلقائي احترافي لفصل طويل ذي صفحات مباشرة (بلا أجنحة سابقة) إلى
+     * أجنحة متتالية، كل واحد بين [WING_RECOMMENDED_MIN_PAGES] و
+     * [WING_RECOMMENDED_MAX_PAGES] صفحة — وحدة درامية متكاملة قابلة للقراءة
+     * المستقلة. الصفحات الأصلية تبقى في مكانها (لا حذف)؛ يُنشئ فقط أجنحة
+     * جديدة تُرقّم أرقام صفحات الفصل نفسها بالتتابع ضمن كل جناح. يُستخدم عادة
+     * لفصل مستورد دفعة واحدة يريد كاتبه إعادة تقسيمه سردياً لاحقاً.
+     *
+     * ملاحظة: هذه عملية تنظيمية (Wings هيكل قراءة) ولا تنسخ ملفات الصفحات
+     * فعلياً؛ إن كانت آلية .dlofcomic تتطلب نسخاً مادياً للملفات داخل مجلد كل
+     * جناح فاستخدم الإصدار اليدوي [addWingPages] بدلاً من هذه الدالة مع مصادر
+     * الصور الأصلية.
+     */
+    fun suggestAutoWingSplit(
+        chapterFolder: DocumentFile,
+        pagesPerWing: Int = WING_RECOMMENDED_MAX_PAGES
+    ): List<IntRange> {
+        val pageCount = listChapterPages(chapterFolder).size
+        if (pageCount <= 0) return emptyList()
+        val size = pagesPerWing.coerceIn(WING_RECOMMENDED_MIN_PAGES, WING_RECOMMENDED_MAX_PAGES)
+        val ranges = mutableListOf<IntRange>()
+        var start = 0
+        while (start < pageCount) {
+            val end = (start + size - 1).coerceAtMost(pageCount - 1)
+            ranges += start..end
+            start = end + 1
+        }
+        return ranges
     }
 
     /** يضيف جناحاً جديداً لفصل (رقمه تلقائي تالٍ لآخر جناح موجود) من مجموعة صور. */
