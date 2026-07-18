@@ -51,6 +51,11 @@ fun SlcdSettingsScreen(library: SlcdLibrary?, onBack: () -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    val allChapters = remember(library) { library?.seasons?.flatMap { it.chapters } ?: emptyList() }
+    val chaptersWithWings = remember(allChapters) { allChapters.count { it.wings.isNotEmpty() } }
+    val totalWings = remember(allChapters) { allChapters.sumOf { it.wings.size } }
+    val totalCliffhangers = remember(allChapters) { allChapters.sumOf { c -> c.wings.count { it.isCliffhanger } } }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -106,10 +111,6 @@ fun SlcdSettingsScreen(library: SlcdLibrary?, onBack: () -> Unit) {
             }
 
             if (library != null) {
-                val allChapters = remember(library) { library.seasons.flatMap { it.chapters } }
-                val chaptersWithWings = remember(allChapters) { allChapters.count { it.wings.isNotEmpty() } }
-                val totalWings = remember(allChapters) { allChapters.sumOf { it.wings.size } }
-                val totalCliffhangers = remember(allChapters) { allChapters.sumOf { c -> c.wings.count { it.isCliffhanger } } }
                 if (totalWings > 0) {
                     item { SlcdSettingsSectionTitle("نظام الأجنحة — إحصائيات المكتبة") }
                     item {
