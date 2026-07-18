@@ -22,8 +22,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.DragHandle
@@ -55,7 +57,7 @@ private sealed class SlcdRoute {
     data class SeasonDetail(val seasonNumber: Int) : SlcdRoute()
     data class ChapterDetail(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
     /** شاشة القراءة الجديدة المخصّصة (تمرير رأسي + شريط تقدّم قابل للسحب) — تحلّ محل onOpenDlof لصفحات SLCD. */
-    data class Reader(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
+    data class Reader(val seasonNumber: Int, val chapterNumber: Int, val wingNumber: Int? = null) : SlcdRoute()
     /** شاشة فريق العمل والنشر — معلومات اعتماد اختيارية على مستوى المكتبة كاملة. */
     data object Credits : SlcdRoute()
     /** شاشة إنشاء/تعديل معلومات القصة الكاملة (الاسم، الوصف، الناشر، الدولة، الغلاف، البانرات...). */
@@ -66,6 +68,8 @@ private sealed class SlcdRoute {
     data class ChapterInfo(val seasonNumber: Int, val chapterNumber: Int) : SlcdRoute()
     /** شاشة قاموس الحقوق (صفحة واحدة لكل المكتبة، HTML/Markdown/نص/صورة). */
     data object Rights : SlcdRoute()
+    /** شاشة الإعدادات (عرض/قراءة + قسم متقدّم مخفي لتحسين الأداء). */
+    data object Settings : SlcdRoute()
 }
 
 /**
@@ -158,9 +162,14 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 val externalUrl = resolveExternalUrl(chapter)
                 if (externalUrl != null) {
                     openExternalLink(externalUrl)
-                } else if (chapter.pageCount > 0) {
-                    SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber)
-                    route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber)
+                } else if (chapter.totalPageCount > 0) {
+                    // استئناف عند نفس الجناح بالضبط الذي توقّف عنده القارئ
+                    // (نظام الأجنحة) بدل بداية الفصل دائماً — راجع
+                    // SlcdSettings.slcdLastWing المرتبط مباشرة بشاشة القراءة.
+                    val resumeWing = SlcdSettings.lastReadWing(context, chapter.seasonNumber, chapter.chapterNumber)
+                        ?.takeIf { w -> chapter.wings.any { it.number == w } }
+                    SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber, resumeWing)
+                    route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber, resumeWing)
                 } else {
                     toast = "لا توجد صفحات في هذا الفصل بعد"
                 }
@@ -207,7 +216,8 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
             },
             onOpenCredits = { route = SlcdRoute.Credits },
             onOpenStoryInfo = { route = SlcdRoute.StoryInfo },
-            onOpenRights = { route = SlcdRoute.Rights }
+            onOpenRights = { route = SlcdRoute.Rights },
+            onOpenSettings = { route = SlcdRoute.Settings }
         )
 
         is SlcdRoute.Credits -> SlcdCreditsScreen(
@@ -224,6 +234,11 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
 
         is SlcdRoute.Rights -> SlcdRightsScreen(
             root = lib.root,
+            onBack = { route = SlcdRoute.Library }
+        )
+
+        is SlcdRoute.Settings -> SlcdSettingsScreen(
+            library = lib,
             onBack = { route = SlcdRoute.Library }
         )
 
@@ -261,6 +276,10 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                         reloadTick++
                         route = SlcdRoute.ChapterDetail(current.seasonNumber, current.chapterNumber)
                         toast = "تم حفظ معلومات الفصل"
+                    },
+                    onOpenWing = { wingNumber ->
+                        SlcdSettings.markSlcdLastRead(context, current.seasonNumber, current.chapterNumber)
+                        route = SlcdRoute.Reader(current.seasonNumber, current.chapterNumber, wingNumber)
                     }
                 )
             }
@@ -280,9 +299,11 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                     val externalUrl = resolveExternalUrl(chapter)
                     if (externalUrl != null) {
                         openExternalLink(externalUrl)
-                    } else if ((chapter?.pageCount ?: 0) > 0) {
-                        SlcdSettings.markSlcdLastRead(context, current.seasonNumber, chapterNum)
-                        route = SlcdRoute.Reader(current.seasonNumber, chapterNum)
+                    } else if ((chapter?.totalPageCount ?: 0) > 0) {
+                        val resumeWing = SlcdSettings.lastReadWing(context, current.seasonNumber, chapterNum)
+                            ?.takeIf { w -> chapter?.wings?.any { it.number == w } == true }
+                        SlcdSettings.markSlcdLastRead(context, current.seasonNumber, chapterNum, resumeWing)
+                        route = SlcdRoute.Reader(current.seasonNumber, chapterNum, resumeWing)
                     } else {
                         toast = "لا توجد صفحات في هذا الفصل بعد"
                     }
@@ -360,9 +381,11 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                         val externalUrl = resolveExternalUrl(chapter)
                         if (externalUrl != null) {
                             openExternalLink(externalUrl)
-                        } else if (chapter.pageCount > 0) {
-                            SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber)
-                            route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber)
+                        } else if (chapter.totalPageCount > 0) {
+                            val resumeWing = SlcdSettings.lastReadWing(context, chapter.seasonNumber, chapter.chapterNumber)
+                                ?.takeIf { w -> chapter.wings.any { it.number == w } }
+                            SlcdSettings.markSlcdLastRead(context, chapter.seasonNumber, chapter.chapterNumber, resumeWing)
+                            route = SlcdRoute.Reader(chapter.seasonNumber, chapter.chapterNumber, resumeWing)
                         } else {
                             toast = "لا توجد صفحات في هذا الفصل بعد"
                         }
@@ -413,6 +436,8 @@ fun SLCDHomeScreen(onBack: () -> Unit, onOpenDlof: (Uri) -> Unit) {
                 chapterTitle = chapter?.title,
                 hasPreviousChapter = previousPair != null,
                 hasNextChapter = nextPair != null,
+                wings = chapter?.wings.orEmpty(),
+                initialWingNumber = current.wingNumber,
                 onBack = {
                     reloadTick++
                     route = SlcdRoute.ChapterDetail(current.seasonNumber, current.chapterNumber)
@@ -527,7 +552,8 @@ private fun SlcdLibraryScreen(
     onUninstall: () -> Unit,
     onOpenCredits: () -> Unit,
     onOpenStoryInfo: () -> Unit = {},
-    onOpenRights: () -> Unit = {}
+    onOpenRights: () -> Unit = {},
+    onOpenSettings: () -> Unit = {}
 ) {
     var showAddSeasonDialog by remember { mutableStateOf(false) }
     var pendingCoverNumber by remember { mutableStateOf<Int?>(null) }
@@ -572,6 +598,10 @@ private fun SlcdLibraryScreen(
                         DropdownMenuItem(
                             text = { Text("معلومات القصة") },
                             onClick = { showMenu = false; onOpenStoryInfo() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("الإعدادات") },
+                            onClick = { showMenu = false; onOpenSettings() }
                         )
                         DropdownMenuItem(
                             text = { Text("قاموس الحقوق") },
@@ -1301,6 +1331,35 @@ private fun SlcdChapterRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // ── ربط مباشر بنظام الأجنحة: تقدّم القراءة + تنبيه تشويق معلّق ──
+                if (chapter.wings.isNotEmpty() && !chapter.isRead) {
+                    val context = LocalContext.current
+                    val sortedWings = remember(chapter.wings) { chapter.wings.sortedBy { it.number } }
+                    val lastWingNumber = remember(chapter) {
+                        SlcdSettings.lastReadWing(context, chapter.seasonNumber, chapter.chapterNumber)
+                    }
+                    val lastWingIndex = lastWingNumber?.let { n -> sortedWings.indexOfFirst { it.number == n } } ?: -1
+                    val pendingCliffhanger = sortedWings.getOrNull(lastWingIndex)?.takeIf { it.isCliffhanger }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.ViewCarousel, contentDescription = null, tint = SlcdGreen, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (lastWingIndex >= 0) "الجناح ${lastWingIndex + 1} من ${sortedWings.size}" else "${sortedWings.size} أجنحة",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SlcdGreen
+                        )
+                        if (pendingCliffhanger != null) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Filled.Bolt, contentDescription = "تشويق بالانتظار", tint = Color(0xFFFB7185), modifier = Modifier.size(13.dp))
+                            Text(
+                                " تشويق بالانتظار",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFB7185),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
             IconButton(onClick = onToggleFavorite) {
                 Icon(
@@ -1309,7 +1368,7 @@ private fun SlcdChapterRow(
                     tint = SlcdGold
                 )
             }
-            IconButton(onClick = onRead, enabled = chapter.pageCount > 0) {
+            IconButton(onClick = onRead, enabled = chapter.totalPageCount > 0) {
                 Icon(Icons.Filled.PlayCircle, contentDescription = "قراءة الفصل", tint = SlcdGreen)
             }
             Icon(
@@ -1486,7 +1545,7 @@ private fun SlcdChapterScreen(
 
             Button(
                 onClick = onRead,
-                enabled = chapter.pageCount > 0,
+                enabled = chapter.totalPageCount > 0,
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 14.dp)
             ) {
