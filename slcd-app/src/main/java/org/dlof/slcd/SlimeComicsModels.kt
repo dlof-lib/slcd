@@ -30,13 +30,23 @@ data class SlcdCover(
 /**
  * جناح واحد داخل فصل طويل: seasons/seasonN/chapters/chapterM/wings/wingK/.
  * يسمح بتقسيم فصل واحد طويل إلى أجزاء منفصلة الصفحات (مثال: الجناح 1 = 10
- * صفحات، الجناح 2 = 9 صفحات...)، كل جناح يُقرأ بشكل مستقل ضمن نفس الفصل.
+ * صفحات، الجناح 2 = 9 صفحات...)، كل جناح يُقرأ بشكل مستقل ضمن نفس الفصل
+ * ويمثّل — سردياً — وحدة درامية متكاملة (نظام الأجنحة): تبدأ بحدث، تتصاعد،
+ * وتنتهي عند [isCliffhanger] بلحظة تشويق تُبقي القارئ متشوّقاً للجناح التالي.
  */
 data class SlcdWing(
     val number: Int,
     val folder: DocumentFile,
     val pageCount: Int,
-    val title: String? = null
+    val title: String? = null,
+    /**
+     * هل ينتهي هذا الجناح بلحظة تشويق (Cliffhanger)؟ عند true تُعرض بطاقة
+     * ختامية مختلفة في القارئ (لون/أيقونة مميّزة) بدل بطاقة "نهاية الفصل"
+     * العادية، لتحفيز الانتقال الفوري للجناح التالي.
+     */
+    val isCliffhanger: Boolean = false,
+    /** ملاحظة تشويقية قصيرة اختيارية تُعرض في بطاقة ختام الجناح (مثال: "من سينجو؟!"). */
+    val cliffhangerNote: String? = null
 )
 
 /** فصل مفرد داخل seasons/seasonN/chapters/chapterM/. */
