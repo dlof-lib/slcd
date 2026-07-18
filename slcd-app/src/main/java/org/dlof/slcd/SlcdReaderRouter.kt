@@ -36,6 +36,10 @@ fun SlcdReaderRouter(
     onBack: () -> Unit,
     onNextChapter: () -> Unit = {},
     onPreviousChapter: () -> Unit = {},
+    /** أجنحة الفصل (نظام الأجنحة) — فارغة لفصل عادي بلا تقسيم درامي. */
+    wings: List<SlcdWing> = emptyList(),
+    /** الجناح الذي يجب فتحه أولاً؛ null = أول جناح تلقائياً إن وُجدت أجنحة، أو صفحات الفصل المباشرة. */
+    initialWingNumber: Int? = null,
 ) {
     val context = LocalContext.current
 
@@ -52,7 +56,9 @@ fun SlcdReaderRouter(
             onBack = onBack,
             onNextChapter = onNextChapter,
             onPreviousChapter = onPreviousChapter,
-            onSwitchStyle = { SlcdSettings.setReadingStyle(context, SlcdSettings.ReadingStyle.PLUS) }
+            onSwitchStyle = { SlcdSettings.setReadingStyle(context, SlcdSettings.ReadingStyle.PLUS) },
+            wings = wings,
+            initialWingNumber = initialWingNumber
         )
 
         SlcdSettings.ReadingStyle.PLUS -> SlcdPlusReaderScreen(
