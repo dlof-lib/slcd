@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,9 +35,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         SlcdSettings.init(this)
+        SlcdStructuralCache.applyCacheLimit(SlcdSettings.structuralCacheLimit)
 
         setContent {
-            SlcdTheme {
+            // إصلاح: كان SlcdTheme يُستدعى بلا تمرير darkTheme فيعتمد فقط على
+            // ثيم النظام، متجاهلاً SlcdSettings.themeMode كلياً حتى لو اختار
+            // المستخدم "فاتح" أو "غامق" صراحة (كان اختياراً بلا أثر فعلي).
+            val isSystemDark = isSystemInDarkTheme()
+            val forcedDark = when (SlcdSettings.themeMode) {
+                SlcdSettings.ThemeMode.SYSTEM -> isSystemDark
+                SlcdSettings.ThemeMode.DARK -> true
+                SlcdSettings.ThemeMode.LIGHT -> false
+            }
+            SlcdTheme(darkTheme = forcedDark) {
                 Surface(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     SlcdRootFlow(
                         onOpenExternalDlof = { uri -> openWithExternalDlofViewer(uri) }
