@@ -11,13 +11,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,7 +54,9 @@ fun SlcdChapterInfoScreen(
     fallbackSeasonIconUri: Uri?,
     fallbackStoryCoverUri: Uri?,
     onBack: () -> Unit,
-    onSaved: () -> Unit
+    onSaved: () -> Unit,
+    /** يُستدعى عند الضغط على جناح لفتحه للقراءة مباشرة (نظام الأجنحة). null = لا زر قراءة (اختياري بالكامل). */
+    onOpenWing: ((Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val repo = remember { SlimeComicsRepository(context) }
@@ -69,6 +74,8 @@ fun SlcdChapterInfoScreen(
     var showAddWingDialog by remember { mutableStateOf(false) }
     var renameWingTarget by remember { mutableStateOf<SlcdWing?>(null) }
     var deleteWingTarget by remember { mutableStateOf<SlcdWing?>(null) }
+    var cliffhangerWingTarget by remember { mutableStateOf<SlcdWing?>(null) }
+    var showAutoSplitSuggestion by remember { mutableStateOf(false) }
 
     val pickCover = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) customCover = repo.setChapterCover(root, chapter.seasonNumber, chapter.chapterNumber, uri)
@@ -238,10 +245,15 @@ fun SlcdChapterInfoScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("أجنحة الفصل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "لفصل طويل مقسّم لأجزاء (مثال: الجناح 1 = 10 صفحات، الجناح 2 = 9 صفحات...)",
+                            "وحدة درامية متكاملة لكل جناح (${SlimeComicsRepository.WING_RECOMMENDED_MIN_PAGES}–${SlimeComicsRepository.WING_RECOMMENDED_MAX_PAGES} صفحات) تنتهي بلحظة تشويق تشدّ القارئ للتالي.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    if (wings.isEmpty() && chapter.pageCount > 0) {
+                        IconButton(onClick = { showAutoSplitSuggestion = true }) {
+                            Icon(Icons.Filled.ViewCarousel, contentDescription = "اقتراح تقسيم تلقائي", tint = SlcdChapterGold)
+                        }
                     }
                     IconButton(onClick = { showAddWingDialog = true }) {
                         Icon(Icons.Filled.Add, contentDescription = "إضافة جناح", tint = SlcdChapterGreen)
@@ -259,7 +271,10 @@ fun SlcdChapterInfoScreen(
                 }
             } else {
                 items(wings, key = { it.number }) { wing ->
+                    val pageCountOk = wing.pageCount in
+                        SlimeComicsRepository.WING_RECOMMENDED_MIN_PAGES..SlimeComicsRepository.WING_RECOMMENDED_MAX_PAGES
                     Surface(
+                        onClick = { onOpenWing?.invoke(wing.number) },
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.fillMaxWidth()
@@ -268,15 +283,43 @@ fun SlcdChapterInfoScreen(
                             modifier = Modifier.padding(14.dp).fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            if (onOpenWing != null) {
+                                Icon(Icons.Filled.MenuBook, contentDescription = "فتح للقراءة", tint = SlcdChapterGreen, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                            }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    wing.title?.takeIf { it.isNotBlank() } ?: "الجناح ${wing.number}",
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    "${wing.pageCount} صفحة",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        wing.title?.takeIf { it.isNotBlank() } ?: "الجناح ${wing.number}",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (wing.isCliffhanger) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(Icons.Filled.Bolt, contentDescription = "ينتهي بلحظة تشويق", tint = Color(0xFFFB7185), modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "${wing.pageCount} صفحة",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (!pageCountOk) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(Icons.Filled.Warning, contentDescription = "خارج المدى الدرامي الموصى به", tint = SlcdChapterGold, modifier = Modifier.size(14.dp))
+                                        Text(
+                                            " خارج المدى الموصى به (${SlimeComicsRepository.WING_RECOMMENDED_MIN_PAGES}–${SlimeComicsRepository.WING_RECOMMENDED_MAX_PAGES})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = SlcdChapterGold
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(onClick = { cliffhangerWingTarget = wing }) {
+                                Icon(
+                                    Icons.Filled.Bolt,
+                                    contentDescription = "لحظة التشويق",
+                                    tint = if (wing.isCliffhanger) Color(0xFFFB7185) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             IconButton(onClick = { renameWingTarget = wing }) {
@@ -331,6 +374,100 @@ fun SlcdChapterInfoScreen(
             onDismiss = { deleteWingTarget = null }
         )
     }
+
+    cliffhangerWingTarget?.let { wing ->
+        SlcdCliffhangerDialog(
+            wing = wing,
+            onConfirm = { enabled, note ->
+                repo.setWingCliffhanger(chapter.folder, wing.number, enabled, note)
+                wings = repo.listWings(chapter.folder)
+                cliffhangerWingTarget = null
+            },
+            onDismiss = { cliffhangerWingTarget = null }
+        )
+    }
+
+    if (showAutoSplitSuggestion) {
+        val suggestion = remember(chapter) {
+            repo.suggestAutoWingSplit(chapter.folder, pagesPerWing = org.dlof.slcd.settings.SlcdSettings.wingDefaultPageCount)
+        }
+        AlertDialog(
+            onDismissRequest = { showAutoSplitSuggestion = false },
+            title = { Text("اقتراح تقسيم لأجنحة") },
+            text = {
+                Column {
+                    Text(
+                        "بناءً على ${chapter.pageCount} صفحة، يقترح التطبيق ${suggestion.size} جناح — كل واحد وحدة درامية متكاملة:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    suggestion.forEachIndexed { index, range ->
+                        Text(
+                            "الجناح ${index + 1}: صفحات ${range.first + 1}–${range.last + 1} (${range.last - range.first + 1} صفحة)",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "هذا اقتراح تنظيمي فقط — أنشئ كل جناح يدوياً عبر زر \"إضافة جناح\" واختر له صور صفحاته ضمن المدى المقترح.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAutoSplitSuggestion = false; showAddWingDialog = true }) { Text("إضافة جناح الآن") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAutoSplitSuggestion = false }) { Text("إغلاق") }
+            }
+        )
+    }
+}
+
+/** حوار تفعيل/تعديل/إلغاء لحظة التشويق (Cliffhanger) الختامية لجناح معيّن. */
+@Composable
+private fun SlcdCliffhangerDialog(
+    wing: SlcdWing,
+    onConfirm: (enabled: Boolean, note: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var enabled by remember { mutableStateOf(wing.isCliffhanger) }
+    var note by remember { mutableStateOf(wing.cliffhangerNote.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("لحظة التشويق — الجناح ${wing.number}") },
+        text = {
+            Column {
+                Text(
+                    "فعّلها ليعرض القارئ بطاقة تشويق مميّزة عند نهاية هذا الجناح بدل بطاقة \"نهاية الفصل\" العادية.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text("ينتهي هذا الجناح بلحظة تشويق")
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("ملاحظة تشويقية (اختياري، مثال: \"من سينجو؟!\")") },
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(enabled, note) }) { Text("حفظ") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إلغاء") }
+        }
+    )
 }
 
 @Composable
