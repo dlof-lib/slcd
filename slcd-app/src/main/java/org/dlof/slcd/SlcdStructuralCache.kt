@@ -28,13 +28,25 @@ import kotlinx.coroutines.withContext
  *
  * هذه الذاكرة **لا** تخزّن أي Bitmap — فقط قوائم [DocumentFile] ونماذج
  * [SlcdChapter] خفيفة، لذا استهلاكها للذاكرة ضئيل جداً ومحدود بسقف
- * [MAX_CHAPTER_ENTRIES] فصلاً (يُفرَّغ الأقدم تلقائياً بعده).
+ * [maxChapterEntries] فصلاً (يُفرَّغ الأقدم تلقائياً بعده، وقابل للتعديل عبر [applyCacheLimit]).
  */
 object SlcdStructuralCache {
 
-    private const val MAX_CHAPTER_ENTRIES = 16
+    // إعداد متقدّم/مخفي (راجع SlcdSettings.structuralCacheLimit) — قيمة افتراضية
+    // متطابقة مع السلوك القديم؛ يمكن تعديلها من شاشة الإعدادات المتقدّمة.
+    private var maxChapterEntries = 16
 
-    private data class ChapterKey(val seasonNumber: Int, val chapterNumber: Int)
+    /** يُستدعى عند الإقلاع (أو بعد تعديل المستخدم للإعداد) لمزامنة السقف الفعلي مع [SlcdSettings]. */
+    @Synchronized
+    fun applyCacheLimit(limit: Int) {
+        maxChapterEntries = limit.coerceIn(4, 64)
+        while (chapterPagesCache.size > maxChapterEntries) {
+            val oldest = chapterPagesCache.keys.firstOrNull() ?: break
+            chapterPagesCache.remove(oldest)
+        }
+    }
+
+    private data class ChapterKey(val seasonNumber: Int, val chapterNumber: Int, val wingNumber: Int? = null)
 
     // LinkedHashMap بترتيب الدخول يسمح بتفريغ الأقدم بسهولة عند تجاوز السقف.
     private val chapterPagesCache = LinkedHashMap<ChapterKey, List<DocumentFile>>()
@@ -42,17 +54,17 @@ object SlcdStructuralCache {
 
     // ───────────────────────── مانفست لوحات فصل ─────────────────────────
 
-    /** القائمة الهيكلية للوحات فصل، إن كانت محفوظة سلفاً في الذاكرة، أو null. */
+    /** القائمة الهيكلية للوحات فصل (أو جناح واحد منه إن مُرِّر [wingNumber])، إن كانت محفوظة سلفاً في الذاكرة، أو null. */
     @Synchronized
-    fun cachedPages(seasonNumber: Int, chapterNumber: Int): List<DocumentFile>? =
-        chapterPagesCache[ChapterKey(seasonNumber, chapterNumber)]
+    fun cachedPages(seasonNumber: Int, chapterNumber: Int, wingNumber: Int? = null): List<DocumentFile>? =
+        chapterPagesCache[ChapterKey(seasonNumber, chapterNumber, wingNumber)]
 
     @Synchronized
-    private fun putPages(seasonNumber: Int, chapterNumber: Int, pages: List<DocumentFile>) {
-        val key = ChapterKey(seasonNumber, chapterNumber)
+    private fun putPages(seasonNumber: Int, chapterNumber: Int, wingNumber: Int?, pages: List<DocumentFile>) {
+        val key = ChapterKey(seasonNumber, chapterNumber, wingNumber)
         chapterPagesCache.remove(key) // نعيد إدراجه في النهاية (الأحدث استخداماً) إن كان موجوداً
         chapterPagesCache[key] = pages
-        while (chapterPagesCache.size > MAX_CHAPTER_ENTRIES) {
+        while (chapterPagesCache.size > maxChapterEntries) {
             val oldest = chapterPagesCache.keys.firstOrNull() ?: break
             chapterPagesCache.remove(oldest)
         }
@@ -63,42 +75,54 @@ object SlcdStructuralCache {
      * التخزين (خلفية `Dispatchers.IO`) ويحفظها للمرة القادمة. هذه هي نقطة
      * الدخول التي يجب أن تستخدمها شاشات القراءة بدل مناداة
      * [SlimeComicsRepository.listChapterPages] مباشرة.
+     *
+     * إن مُرِّر [wingNumber] تُحمَّل صفحات ذلك الجناح فقط (وحدة درامية
+     * مستقلة ضمن نظام الأجنحة) بدل صفحات الفصل المباشرة كاملة.
      */
     suspend fun ensurePages(
         repository: SlimeComicsRepository,
         root: DocumentFile,
         seasonNumber: Int,
-        chapterNumber: Int
+        chapterNumber: Int,
+        wingNumber: Int? = null
     ): List<DocumentFile> {
-        cachedPages(seasonNumber, chapterNumber)?.let { return it }
+        cachedPages(seasonNumber, chapterNumber, wingNumber)?.let { return it }
         val loaded = withContext(Dispatchers.IO) {
-            repository.chapterFolder(root, seasonNumber, chapterNumber)
-                ?.let { repository.listChapterPages(it) }
-                ?: emptyList()
+            val chapterDir = repository.chapterFolder(root, seasonNumber, chapterNumber)
+            if (chapterDir == null) {
+                emptyList()
+            } else if (wingNumber != null) {
+                repository.wingFolder(chapterDir, wingNumber)?.let { repository.listWingPages(it) } ?: emptyList()
+            } else {
+                repository.listChapterPages(chapterDir)
+            }
         }
-        putPages(seasonNumber, chapterNumber, loaded)
+        putPages(seasonNumber, chapterNumber, wingNumber, loaded)
         return loaded
     }
 
     /**
-     * تحميل مسبق **صامت** (بلا انتظار من المستدعي) لمانفست فصل مجاور —
-     * يُستدعى عادة عند اقتراب القارئ من حافة الفصل الحالي. لا يفعل شيئاً
-     * إن كان المانفست محفوظاً أصلاً.
+     * تحميل مسبق **صامت** (بلا انتظار من المستدعي) لمانفست فصل أو جناح مجاور —
+     * يُستدعى عادة عند اقتراب القارئ من حافة الفصل/الجناح الحالي. لا يفعل
+     * شيئاً إن كان المانفست محفوظاً أصلاً.
      */
     suspend fun prefetchPages(
         repository: SlimeComicsRepository,
         root: DocumentFile,
         seasonNumber: Int,
-        chapterNumber: Int
+        chapterNumber: Int,
+        wingNumber: Int? = null
     ) {
-        if (cachedPages(seasonNumber, chapterNumber) != null) return
-        ensurePages(repository, root, seasonNumber, chapterNumber)
+        if (cachedPages(seasonNumber, chapterNumber, wingNumber) != null) return
+        ensurePages(repository, root, seasonNumber, chapterNumber, wingNumber)
     }
 
-    /** يُستدعى بعد أي تعديل فعلي على ملفات فصل (إضافة/حذف لوحة) لإبطال مانفستها القديم. */
+    /** يُستدعى بعد أي تعديل فعلي على ملفات فصل (إضافة/حذف لوحة) لإبطال مانفستها القديم (بكل أجنحته أيضاً). */
     @Synchronized
     fun invalidateChapter(seasonNumber: Int, chapterNumber: Int) {
-        chapterPagesCache.remove(ChapterKey(seasonNumber, chapterNumber))
+        chapterPagesCache.keys
+            .filter { it.seasonNumber == seasonNumber && it.chapterNumber == chapterNumber }
+            .forEach { chapterPagesCache.remove(it) }
     }
 
     // ───────────────────────── فصول موسم كامل ─────────────────────────
